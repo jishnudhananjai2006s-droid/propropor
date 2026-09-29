@@ -1,0 +1,103 @@
+# Startline MVP
+
+A start-sooner app for young people. Add the task you keep avoiding, get a first step under 2 minutes, run a focus sprint, and see proof that you now start sooner. Long-term goals become a "race" of small laps and steps.
+
+Free and Pro plans are built in, with sign-in. Progress lives in the browser first (works offline and without an account). Signing in adds a backup that syncs across devices, and lets the Pro subscription follow the person to any phone.
+
+## Free vs Pro
+
+| | Free | Pro |
+|---|---|---|
+| Tasks, first-step suggestions, focus sprints, wins | Yes | Yes |
+| Streak, focus minutes, completion rate | Yes | Yes |
+| Races | 1, built-in plan | Unlimited, AI-written plan |
+| Before/after start-delay comparison and weekly chart | Locked | Yes |
+
+## Run it on Replit
+
+1. Unzip this folder on your computer.
+2. In Replit, create a new Repl (Node.js), then drag all the unzipped files into it. Or push the folder to GitHub and use "Import from GitHub".
+3. Press **Run**. Replit installs the packages and starts the server.
+4. The app opens in the preview pane. It starts in **test mode**: the paywall works, but payments are simulated and nobody is charged. A "Test mode" badge shows on the paywall.
+
+Try it: add a task, start a sprint, open Race, create a second race, and the paywall appears. Tap the trial button to switch Pro on.
+
+If Replit complains about the `.replit` file, delete it and set the Run command to `npm start`.
+
+## Sign-in
+
+Two modes, chosen automatically:
+
+- **Test sign-in** (no setup): if `GOOGLE_CLIENT_ID` is not set, the login sheet asks for a made-up name. It is only for trying the app and is refused when live payments are on.
+- **Google sign-in** (real): 
+  1. Google Cloud Console, then APIs & Services, then Credentials, then Create credentials, then OAuth client ID, type **Web application**.
+  2. Under **Authorized JavaScript origins** add your Replit preview URL and your deployed URL (no trailing slash).
+  3. Put the client id in Replit Secret `GOOGLE_CLIENT_ID`.
+  4. On the OAuth consent screen, set publishing status to **In production**, otherwise only listed test users can sign in.
+
+Sign-in is optional for free use. It is asked for when the person subscribes, or from the account row on the Report tab. Signed-in people can back up and restore progress, sign out, erase their backup, or delete their account (cancel Pro first).
+
+## Go live with real payments
+
+Add these in Replit **Secrets** (padlock icon). `.env.example` lists every name.
+
+Always set:
+- `GOOGLE_CLIENT_ID` : real sign-in (required for live payments)
+- `PAYMENTS_PROVIDER` : `razorpay` or `stripe`
+- `TOKEN_SECRET` : long random text. Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+- `PRICE_LABEL` : the text shown on the paywall, for example `₹149 / month`. It must match the price you create at the provider.
+- `TRIAL_DAYS` : free trial length, or `0`
+
+### Razorpay (recommended in India)
+
+Stripe accounts for Indian businesses are invite-only, so Razorpay is the practical choice.
+
+1. In the Razorpay dashboard, go to Subscriptions, then Plans, and create a monthly plan at your price. Copy the plan id.
+2. Copy your Key Id and Key Secret from Account & Settings, then API Keys. Use Test Mode keys first.
+3. Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_PLAN_ID`.
+4. Test with Razorpay's test cards, then switch to Live keys.
+
+### Stripe (if you have an account)
+
+1. Create a product with a recurring price. Copy the price id.
+2. Set `STRIPE_SECRET_KEY` and `STRIPE_PRICE_ID`.
+3. In Stripe settings, turn on the Customer Portal so users can manage or cancel.
+
+### AI race planner (Pro only)
+
+Set `ANTHROPIC_API_KEY` (from console.anthropic.com). It uses a small, low-cost model. Spending is capped: 20 plans per subscriber per day and 500 per day overall. Change them with `AI_DAILY_LIMIT` and `AI_GLOBAL_DAILY_LIMIT`. Without a key, Pro users get the built-in plan.
+
+### Publish
+
+Use Replit **Deploy** (Autoscale is fine). Copy the same Secrets into the deployment. If checkout redirects to the wrong address, set `PUBLIC_URL` to your live address.
+
+## What the server stores
+
+Only what an account needs, and nothing that identifies the person:
+
+- an opaque account id (from Google's `sub`; your server never saves name, email or photo),
+- the subscription reference (provider customer or subscription id),
+- an optional backup of their progress (tasks, sprints, races), capped at 300 KB. Example data is never uploaded.
+
+Storage is Replit Database on Replit (no setup) and a JSON file in `data/` on your own computer. The development Repl and the deployed app have separate databases. Payment details and email stay with the payment provider. Sessions are signed tokens valid for 90 days; deleting an account signs out every device and erases the backup.
+
+## Known limits
+
+- **Only the AI planner is locked on the server.** The race limit, the weekly chart and the comparison are locked in the interface. A technical user could bypass them, and a bypass gives them nothing that costs you money. Fine for an MVP.
+- **Sync is whole-copy, not merged.** If two devices change progress separately, the app asks which copy to keep. Simple and safe, but nothing is combined.
+- **Google, Replit Database and payments were not tested against live accounts.** They follow the official docs and libraries; the local tests use test sign-in and simulated payments. Try each once in test mode.
+- **Counters reset on restart.** The AI limits and rate limits are in memory.
+- **Test the payment flows in the provider's test mode** before charging real users. The provider code was checked against the docs but not against live accounts.
+- **Before launch, check the legal side for your audience.** For users under 18 in India, the DPDP Act expects verifiable parental consent. You will also need terms, a privacy policy, a refund policy, and GST if you cross the threshold. This is not legal advice.
+
+## Files
+
+```
+server.js        API: sign-in, sync, billing, AI planner
+lib/store.js     Replit Database or local file
+lib/billing.js   demo, Stripe and Razorpay behind one interface
+lib/token.js     signed session token
+public/          the app (index.html, app.js, style.css)
+.replit          Replit run and deploy settings
+.env.example     every Secret name
+```

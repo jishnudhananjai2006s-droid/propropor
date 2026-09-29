@@ -1,0 +1,20 @@
+{
+  "name": "startline",
+  "version": "0.1.0",
+  "description": "Startline: a start-sooner app for young people, with a Pro subscription",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@replit/database": "^2.0.5",
+    "express": "^4.21.0",
+    "google-auth-library": "^9.15.1",
+    "razorpay": "^2.9.4",
+    "stripe": "^17.0.0"
+  }
+}
