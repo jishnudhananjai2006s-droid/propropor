@@ -15,7 +15,7 @@ function fmtClock(ms){var s=Math.max(0,Math.ceil(ms/1000));return String(Math.fl
 function clip(v,n){return String(v==null?'':v).replace(/\s+/g,' ').trim().slice(0,n);}
 
 /* ---------- state (stays on this device) ---------- */
-function fresh(){return {v:1,stage:null,tasks:[],sessions:[],parked:[],races:[],timer:null,demo:false,pause:null,pauses:[],seen:{},remind:null};}
+function fresh(){return {v:1,stage:null,tasks:[],sessions:[],parked:[],races:[],timer:null,demo:false,pause:null,pauses:[],seen:{},remind:null,style:null};}
 function load(){try{var r=localStorage.getItem(KEY);if(r){var o=JSON.parse(r);if(o&&o.v===1&&Array.isArray(o.tasks))return o;}}catch(e){}return null;}
 function save(nosync){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}if(!nosync)scheduleSync();}
 var S=load();
@@ -277,7 +277,29 @@ function lockChart(){
 }
 
 /* ---------- helpers ---------- */
-function defLen(){return S.stage==='school'?15:25;}
+var STYLES=[
+ {id:'pomo',name:'Pomodoro',d:'25 min work, 5 min break',work:25,brk:5},
+ {id:'fifty',name:'50 and 10',d:'50 min work, 10 min break',work:50,brk:10},
+ {id:'deep',name:'Deep work',d:'90 min work, 20 min break',work:90,brk:20},
+ {id:'burst',name:'Short bursts',d:'15 min work, 3 min break',work:15,brk:3},
+ {id:'flow',name:'Go until done',d:'no fixed breaks',work:45,brk:0},
+ {id:'unsure',name:'Not sure yet',d:'we start you at 15 min',work:15,brk:3}
+];
+function styleObj(){return S.style?STYLES.find(function(x){return x.id===S.style;})||null:null;}
+function defLen(){var st=styleObj();return st?st.work:(S.stage==='school'?15:25);}
+function taskLen(t){
+  if(!t||!t.min)return defLen();
+  var st=styleObj();return st&&st.id!=='flow'?Math.min(t.min,st.work):Math.min(t.min,90);
+}
+function lenChips(len){
+  var a=[2,defLen(),15,25,45,len];a=a.filter(function(v,i){return v>=2&&a.indexOf(v)===i;}).sort(function(x,y){return x-y;});
+  if(a.length>5)a=a.filter(function(v){return v===2||v===len||v===defLen()||v===25||v===45;});
+  return a.slice(0,5);
+}
+function startBreak(m){
+  var now=Date.now();S.timer={taskId:null,len:m,endAt:now+m*MIN,paused:false,remainMs:m*MIN,began:now,ended:false,sid:null,brk:true};
+  save();ui.tab='focus';ui.reset=true;render();
+}
 function taskById(id){return S.tasks.find(function(t){return t.id===id;});}
 function openTasks(){return S.tasks.filter(function(t){return !t.done;}).sort(function(a,b){return a.created-b.created;});}
 function suggestStep(text){
@@ -365,6 +387,7 @@ function startSprint(taskId,len){
 }
 function endSprint(){
   var T=S.timer;if(!T||T.ended)return;
+  if(T.brk){S.timer=null;save();render();toast('Break over. Ready when you are.');return;}
   var remain=T.paused?T.remainMs:Math.max(0,T.endAt-Date.now());
   var el=T.len*MIN-remain;
   if(el<30000){S.timer=null;save();render();return;}
@@ -374,7 +397,7 @@ function endSprint(){
 function tick(){
   var T=S.timer;if(!T||T.ended||T.paused)return;
   var remain=T.endAt-Date.now();
-  if(remain<=0){endSprint();if(ui.tab!=='focus')toast('Sprint complete. Open Focus to log how it went.');return;}
+  if(remain<=0){endSprint();if(ui.tab!=='focus'&&S.timer)toast('Sprint complete. Open Focus to log how it went.');return;}
   var c=$('#clock');
   if(c){c.textContent=fmtClock(remain);var b=$('#barFill');if(b)b.style.width=((T.len*MIN-remain)/(T.len*MIN)*100)+'%';}
 }
@@ -416,6 +439,7 @@ function vToday(){
     h+='<section class="card"><h2>One quick question</h2><p class="sub" style="margin:6px 0 12px">What are you working towards? It sets your default sprint length.</p><div class="chips">'+
       chip('Exam prep',false,'stage','school')+chip('College',false,'stage','college')+chip('Job or internship',false,'stage','work')+'</div></section>';
   }
+  if(S.stage&&!S.style)h+='<section class="card"><h2>How do you like to work?</h2><p class="sub" style="margin:6px 0 14px">Your timers and breaks will follow this. You can change it later in Report.</p><div class="chips">'+STYLES.map(function(x){return chip(esc(x.name)+' · '+x.work+'/'+x.brk,false,'style',x.id);}).join('')+'</div><p class="note" style="margin-top:12px">Work minutes / break minutes. Pomodoro is 25/5.</p></section>';
   h+=welcomeBack()+seasonCard();
   h+='<form class="card" data-form="add" autocomplete="off"><label class="lbl" for="tTitle">What have you been putting off?</label>'+
     '<input id="tTitle" type="text" maxlength="90" placeholder="'+esc(ph)+'" value="'+esc(ui.draft.title)+'">'+
@@ -427,7 +451,7 @@ function vToday(){
   if(open.length)h+='<section class="card"><div class="wins-head"><h2>Up next</h2><span class="tag">'+open.length+' open</span></div><ul class="list">'+open.map(function(t){
     return '<li class="item"><button type="button" class="check" data-action="toggle" data-id="'+t.id+'" aria-label="Mark done: '+esc(t.title)+'"></button>'+
       '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="s">First step: '+esc(t.step)+'</div>'+(t.when?'<div class="s mono">Plan: '+esc(t.when)+'</div>':'')+'</div>'+
-      '<div class="acts"><button type="button" class="btn small primary" data-action="start2" data-id="'+t.id+'">Start 2 min</button>'+
+      '<div class="acts">'+(t.min>2?'<button type="button" class="btn small primary" data-action="startt" data-id="'+t.id+'">Start '+taskLen(t)+' min</button><button type="button" class="btn small" data-action="start2" data-id="'+t.id+'">Just 2 min</button>':'<button type="button" class="btn small primary" data-action="start2" data-id="'+t.id+'">Start 2 min</button>')+
       '<button type="button" class="btn small ghost" data-action="remove" data-id="'+t.id+'">Remove</button></div></li>';
   }).join('')+'</ul>';
   if(open.length)h+='</section>';
@@ -451,13 +475,13 @@ function vFocus(){
   var T=S.timer,h='<div class="head"><div class="eyebrow">Sprint</div><h1>Focus</h1></div>';
   if(!T){
     var open=openTasks(),sel=ui.focusTask&&taskById(ui.focusTask)&&!taskById(ui.focusTask).done?ui.focusTask:(open[0]?open[0].id:'');
-    ui.focusTask=sel;var len=ui.len||defLen();
+    ui.focusTask=sel;var selT=sel?taskById(sel):null,len=ui.len||taskLen(selT);
     h+='<p class="sub">Pick a task and a length. If it feels heavy, start with 2 minutes. Starting is the hard part.</p>'+
       '<section class="card"><label class="lbl" for="fTask">Task</label><select id="fTask">'+
       open.map(function(t){return '<option value="'+t.id+'"'+(t.id===sel?' selected':'')+'>'+esc(t.title)+'</option>';}).join('')+
       '<option value=""'+(sel===''?' selected':'')+'>No task, just focus</option></select>'+
       '<div class="lbl">Length</div><div class="chips">'+
-      [[2,'2 min · starter'],[15,'15 min'],[25,'25 min'],[45,'45 min']].map(function(x){return chip(x[1],len===x[0],'setlen',x[0]);}).join('')+'</div>'+
+      lenChips(len).map(function(m){return chip(m===2?'2 min · starter':m+' min',len===m,'setlen',m);}).join('')+'</div>'+
       '<div style="margin-top:16px"><button type="button" class="btn primary big" data-action="startFocus">Start '+len+'-minute sprint</button></div></section>';
     return h+parkCard();
   }
@@ -471,10 +495,11 @@ function vFocus(){
       h+='<div class="lbl" style="margin-top:18px">Did you finish “'+esc(t.title)+'”?</div><div class="row"><button type="button" class="btn primary" data-action="finish">Yes, finished</button><button type="button" class="btn" data-action="notyet">Not yet</button></div>';
       if(T.len===2)h+='<div class="lbl">You already started. Keep the momentum?</div><button type="button" class="btn" data-action="momentum">Keep going: '+defLen()+'-minute sprint</button>';
     }else h+='<div style="margin-top:16px"><button type="button" class="btn primary" data-action="dismiss">Done</button></div>';
+    if(s.min>=10&&styleObj()&&styleObj().brk)h+='<div class="lbl">Rest before the next one?</div><button type="button" class="btn" data-action="brk" data-v="'+styleObj().brk+'">Take a '+styleObj().brk+'-minute break</button>';
     return h+'</section>'+parkCard();
   }
   var remain=T.paused?T.remainMs:Math.max(0,T.endAt-Date.now());
-  h+='<section class="card">'+(t?'<div class="t" style="font-weight:600;overflow-wrap:anywhere">'+esc(t.title)+'</div><div class="s note" style="margin-top:2px">First step: '+esc(t.step)+'</div>':'<div class="t" style="font-weight:600">Free focus</div>')+
+  h+='<section class="card">'+(t?'<div class="t" style="font-weight:600;overflow-wrap:anywhere">'+esc(t.title)+'</div><div class="s note" style="margin-top:2px">First step: '+esc(t.step)+'</div>':'<div class="t" style="font-weight:600">'+(T.brk?'Break time. Step away from the screen.':'Free focus')+'</div>')+
     '<div class="clock" id="clock" role="timer" aria-label="Time left">'+fmtClock(remain)+'</div>'+
     '<div class="bar"><i id="barFill" style="width:'+((T.len*MIN-remain)/(T.len*MIN)*100)+'%"></i></div>'+
     '<div class="row" style="margin-top:16px">'+(T.paused?'<button type="button" class="btn primary" data-action="resume">Resume</button>':'<button type="button" class="btn" data-action="pause">Pause</button>')+
@@ -649,7 +674,7 @@ function vReport(){
     '<div class="metric"><div class="k">Felt focus<span class="n">Your own rating, last 7 days</span></div><div class="val">'+(o.feel==null?'–':o.feel.toFixed(1)+' / 5')+'</div></div></section>';
   h+='<details class="card fold"><summary>Settings and account</summary>'+accountRow()+planRow()+'<div class="lbl">What you are working towards</div><div class="chips">'+
     chip('Exam prep',S.stage==='school','stage','school')+chip('College',S.stage==='college','stage','college')+chip('Job or internship',S.stage==='work','stage','work')+'</div>'+
-    remindRow()+'<div class="lbl">Break and help</div><div class="row">'+(isPaused()?'<button type="button" class="btn small primary" data-action="resumeplan">Resume my plans</button>':'<button type="button" class="btn small" data-action="pauseplan">Pause my plans</button>')+'<button type="button" class="btn small" data-action="tour">Replay the tour</button></div><p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
+    '<div class="lbl">How you like to work</div><div class="chips">'+STYLES.map(function(x){return chip(esc(x.name)+' · '+x.work+'/'+x.brk,S.style===x.id,'style',x.id);}).join('')+'</div>'+remindRow()+'<div class="lbl">Break and help</div><div class="row">'+(isPaused()?'<button type="button" class="btn small primary" data-action="resumeplan">Resume my plans</button>':'<button type="button" class="btn small" data-action="pauseplan">Pause my plans</button>')+'<button type="button" class="btn small" data-action="tour">Replay the tour</button></div><p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
     '<div style="margin-top:12px">'+(ui.confirmErase?'<div class="row"><span class="note">'+(ENT.signedIn?'Erase your progress here and in your account?':'Erase everything on this device?')+'</span><button type="button" class="btn small primary" data-action="eraseyes">Yes, erase</button><button type="button" class="btn small" data-action="eraseno">Keep it</button></div>':'<button type="button" class="btn small" data-action="erase">Erase all my data</button>')+'</div>'+deleteAcctRow()+'</details>';
   return h;
 }
@@ -716,6 +741,7 @@ async function apiRetry(path,body,ctl,f){
 function failStay(f){f.loading=false;f.err='The planner could not answer after several automatic tries. Nothing was lost. Tap the button again, or use a basic plan.';ui.reset=false;render();}
 function planBody(f,extra){
   var b={goal:clip(f.goal,160),weeks:f.weeks,mins:f.mins,stage:S.stage||'',today:ymd(Date.now())};
+  var st0=styleObj();if(st0){b.sprint=st0.work;b.brk=st0.brk;}
   if(f.event&&f.useEvent&&evOk(f.event))b.event={name:f.event.name,date:f.event.date,source:f.event.source||'',note:f.event.note||''};
   if(extra)for(var k in extra)b[k]=extra[k];
   return b;
@@ -783,6 +809,9 @@ function act(a,d){
     case 'stage':S.stage=d.v;save();render();break;
     case 'toggle':{var t=taskById(d.id);if(!t)break;if(t.done){t.done=null;save();render();}else{completeTask(d.id);render();toast(WINS[Math.floor(Math.random()*WINS.length)]);}break;}
     case 'start2':startSprint(d.id,2);break;
+    case 'startt':startSprint(d.id,taskLen(taskById(d.id)));break;
+    case 'style':S.style=d.v;ui.len=null;save();render();toast('Timers now follow your style.');break;
+    case 'brk':startBreak(Number(d.v));break;
     case 'remove':S.tasks=S.tasks.filter(function(x){return x.id!==d.id;});if(S.timer&&S.timer.taskId===d.id)S.timer.taskId=null;S.races.forEach(function(r){r.laps.forEach(function(l){l.steps.forEach(function(s){if(s.taskId===d.id)s.taskId=null;});});});save();render();break;
     case 'setlen':ui.len=Number(d.v);render();break;
     case 'startFocus':startSprint(ui.focusTask||null,ui.len||defLen());break;
@@ -814,7 +843,7 @@ function act(a,d){
     case 'qopt':(function(){var q=ui.raceForm.qs[Number(d.id)];if(q){var o=q.options[Number(d.v)];q.a=(q.a===o?'':o);render();}})();break;
     case 'racecancel':if(ui.abort)ui.abort.abort();break;
     case 'stepToggle':{var f=findStep(d.r,d.s);if(!f)break;if(f.s.done){f.s.done=null;}else{f.s.done=Date.now();var tk=f.s.taskId?taskById(f.s.taskId):null;if(tk&&!tk.done)tk.done=f.s.done;}save();render();break;}
-    case 'stepToday':{var g2=findStep(d.r,d.s);if(!g2)break;var nt={id:uid(),title:g2.s.text,step:suggestStep(g2.s.text),created:Date.now(),started:null,done:null};if(g2.r.demo)nt.demo=1;S.tasks.push(nt);g2.s.taskId=nt.id;save();render();toast('Added to Today.');break;}
+    case 'stepToday':{var g2=findStep(d.r,d.s);if(!g2)break;var nt={id:uid(),title:g2.s.text,step:suggestStep(g2.s.text),min:g2.s.min,created:Date.now(),started:null,done:null};if(g2.r.demo)nt.demo=1;S.tasks.push(nt);g2.s.taskId=nt.id;save();render();toast('Added to Today.');break;}
     case 'racedel':ui.confirmDel=true;render();break;
     case 'racedelno':ui.confirmDel=false;render();break;
     case 'racedelyes':S.races=S.races.filter(function(x){return x.id!==d.id;});ui.raceOpen=null;ui.confirmDel=false;ui.reset=true;save();render();break;
@@ -890,7 +919,7 @@ document.addEventListener('input',function(e){
 });
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!ui.conflict){if(ui.login){ui.login=false;ui.afterLogin='';render();}else if(ui.paywall){ui.paywall=null;ui.payErr='';render();}}
   if(e.key==='Enter'&&e.target&&e.target.id==='demoName'){e.preventDefault();act('demologin',{});}});
-document.addEventListener('change',function(e){if(e.target.id==='fTask')ui.focusTask=e.target.value;});
+document.addEventListener('change',function(e){if(e.target.id==='fTask'){ui.focusTask=e.target.value;ui.len=null;render();}});
 document.addEventListener('submit',function(e){
   var f=e.target.closest('form[data-form]');if(!f)return;e.preventDefault();
   if(f.getAttribute('data-form')==='add'){
