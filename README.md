@@ -24,6 +24,15 @@ Try it: add a task, start a sprint, open Race, create a second race, and the pay
 
 If Replit complains about the `.replit` file, delete it and set the Run command to `npm start`.
 
+## Free hosting without Replit (GitHub + Render + Upstash)
+
+1. **Upstash (free database).** Sign up at console.upstash.com, create a Redis database, and copy `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` from its REST API section.
+2. **Render (free server).** Sign up at render.com with GitHub. Click New, then Blueprint (or Web Service), pick this repository, and let it read `render.yaml`. Paste the two Upstash values when asked. `TOKEN_SECRET` is generated for you.
+3. Open the address Render gives you. It starts in test mode, so payments are simulated and test sign-in works.
+4. To go live, add the Razorpay and `GOOGLE_CLIENT_ID` values in Render's Environment tab, and add your Render address to Google's Authorized JavaScript origins.
+
+Notes: free Render services sleep after 15 minutes without visitors and take about a minute to wake. Their disk is wiped on every restart, which is why the database lives on Upstash. Check each provider's current free limits when you sign up.
+
 ## Sign-in
 
 Two modes, chosen automatically:
@@ -79,7 +88,7 @@ Only what an account needs, and nothing that identifies the person:
 - the subscription reference (provider customer or subscription id),
 - an optional backup of their progress (tasks, sprints, races), capped at 300 KB. Example data is never uploaded.
 
-Storage is Replit Database on Replit (no setup) and a JSON file in `data/` on your own computer. The development Repl and the deployed app have separate databases. Payment details and email stay with the payment provider. Sessions are signed tokens valid for 90 days; deleting an account signs out every device and erases the backup.
+Storage is Upstash Redis when its two values are set, Replit Database on Replit (no setup), and otherwise a JSON file in `data/` on your own computer. The development Repl and the deployed app have separate databases. Payment details and email stay with the payment provider. Sessions are signed tokens valid for 90 days; deleting an account signs out every device and erases the backup.
 
 ## Known limits
 
@@ -94,7 +103,8 @@ Storage is Replit Database on Replit (no setup) and a JSON file in `data/` on yo
 
 ```
 server.js        API: sign-in, sync, billing, AI planner
-lib/store.js     Replit Database or local file
+lib/store.js     Upstash Redis, Replit Database or local file
+render.yaml      Render blueprint (free plan)
 lib/billing.js   demo, Stripe and Razorpay behind one interface
 lib/token.js     signed session token
 public/          the app (index.html, app.js, style.css)

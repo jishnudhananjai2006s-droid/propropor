@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: startline
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/config
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: PAYMENTS_PROVIDER
+        value: demo
+      - key: TOKEN_SECRET
+        generateValue: true
+      - key: PRICE_LABEL
+        value: "₹149 / month"
+      - key: TRIAL_DAYS
+        value: "7"
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
