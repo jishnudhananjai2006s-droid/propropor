@@ -86,8 +86,14 @@ async function verifyGoogle(credential) {
   if (!p || !/^\d{5,30}$/.test(String(p.sub))) throw new Error('unexpected token');
   return String(p.sub);
 }
+const needAdult = (req, res) => {
+  if ((req.body || {}).adult === true) return false;
+  res.status(400).json({ error: 'age_required', message: 'Startline is for people 18 and over.' });
+  return true;
+};
 app.post('/api/auth/google', async (req, res) => {
   if (AUTH_MODE !== 'google') return res.status(404).json({ error: 'not_found' });
+  if (needAdult(req, res)) return;
   let sub;
   try { sub = await verifyGoogle(String((req.body || {}).credential || '')); }
   catch (e) { console.error('[startline] google:', e.message); return res.status(401).json({ error: 'auth_failed', message: 'Google sign-in failed. Please try again.' }); }
@@ -96,6 +102,7 @@ app.post('/api/auth/google', async (req, res) => {
 });
 app.post('/api/auth/demo', async (req, res) => {
   if (AUTH_MODE !== 'demo') return res.status(404).json({ error: 'not_found' });
+  if (needAdult(req, res)) return;
   const name = String((req.body || {}).name || '').trim().toLowerCase();
   if (!/^[a-z0-9_-]{2,20}$/.test(name)) return res.status(400).json({ error: 'bad_name', message: 'Use 2 to 20 letters or numbers.' });
   try { await startSession(res, 'd_' + name); }

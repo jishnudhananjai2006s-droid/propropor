@@ -1,8 +1,12 @@
 # Startline MVP
 
-A start-sooner app for young people. Add the task you keep avoiding, get a first step under 2 minutes, run a focus sprint, and see proof that you now start sooner. Long-term goals become a "race" of small laps and steps.
+A start-sooner app for students and young adults aged 18 to 22. Add the task you keep avoiding, get a first step under 2 minutes, run a focus sprint, and see proof that you now start sooner. Long-term goals become a "race" of small laps and steps.
 
 Free and Pro plans are built in, with sign-in. Progress lives in the browser first (works offline and without an account). Signing in adds a backup that syncs across devices, and lets the Pro subscription follow the person to any phone.
+
+## Who it is for
+
+Startline is for people **18 and over**, aimed at ages 18 to 22 (college, exam prep, first job or internship). A first-run age check asks for birth month and year, and only a yes or no is kept on the device. Sign-in is refused unless the app confirms 18+. This keeps the app clear of the DPDP Act's rules for children (parental consent, no tracking or targeted ads aimed at minors). It is a self-declared gate, not identity verification. Get legal advice before adding partner rewards.
 
 ## Free vs Pro
 

@@ -19,7 +19,7 @@ function fresh(){return {v:1,stage:null,tasks:[],sessions:[],parked:[],races:[],
 function load(){try{var r=localStorage.getItem(KEY);if(r){var o=JSON.parse(r);if(o&&o.v===1&&Array.isArray(o.tasks))return o;}}catch(e){}return null;}
 function save(nosync){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}if(!nosync)scheduleSync();}
 var S=load();
-var ui={login:false,afterLogin:'',pendingPaid:'',loginErr:'',demoName:'',conflict:null,confirmDelAcct:false,paywall:null,busy:false,payErr:'',confirmCancel:false,tab:'today',len:null,focusTask:'',raceOpen:null,raceForm:null,confirmErase:false,confirmDel:false,draft:{title:'',step:'',edited:false},reset:false,abort:null};
+var ui={ageErr:'',login:false,afterLogin:'',pendingPaid:'',loginErr:'',demoName:'',conflict:null,confirmDelAcct:false,paywall:null,busy:false,payErr:'',confirmCancel:false,tab:'today',len:null,focusTask:'',raceOpen:null,raceForm:null,confirmErase:false,confirmDel:false,draft:{title:'',step:'',edited:false},reset:false,abort:null};
 
 /* ---------- plan and billing ---------- */
 var ENT={pro:false,signedIn:false,uid:'',cfg:{provider:'demo',testMode:false,priceLabel:'',trialDays:0,auth:{mode:'demo',googleClientId:''}}};
@@ -165,12 +165,12 @@ async function onAuthed(tok){
   if(!ui.conflict){toast('Signed in.');runAfterLogin();}
 }
 async function onGoogle(cred){
-  try{var j=await api('/api/auth/google',{credential:cred});await onAuthed(j.token);}
+  try{var j=await api('/api/auth/google',{credential:cred,adult:true});await onAuthed(j.token);}
   catch(e){ui.loginErr=e.message;render();}
 }
 async function onDemo(){
   var name=($('#demoName')||{}).value||'';
-  try{var j=await api('/api/auth/demo',{name:name});await onAuthed(j.token);}
+  try{var j=await api('/api/auth/demo',{name:name,adult:true});await onAuthed(j.token);}
   catch(e){ui.loginErr=e.message;render();}
 }
 function runAfterLogin(){
@@ -194,6 +194,25 @@ async function deleteAccount(){
   catch(e){ui.confirmDelAcct=false;render();toast(e.message);return;}
   setTok('');ENT.signedIn=false;ENT.pro=false;ENT.uid='';setLastPro(false);setMeta({uid:'',at:0});
   ui.confirmDelAcct=false;render();toast('Account deleted. Your data on this device is unchanged.');
+}
+var AGEKEY='startline.adult',ageMem='';
+function ageState(){if(ageMem)return ageMem;try{return localStorage.getItem(AGEKEY)||'';}catch(e){return '';}}
+function setAge(v){ageMem=v;try{localStorage.setItem(AGEKEY,v);}catch(e){}}
+function vAge(){
+  if(ageState()==='0')return '<div class="sheet-back"><div class="sheet" role="dialog" aria-modal="true" aria-label="Age check"><span class="badge">Startline</span><h2 style="font-size:24px">Startline is for people 18 and over</h2><p class="sub">Please come back when you turn 18. Nothing was saved.</p></div></div>';
+  var ny=new Date().getFullYear(),mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],o1='<option value="">Month</option>',o2='<option value="">Year</option>',i;
+  for(i=0;i<12;i++)o1+='<option value="'+(i+1)+'">'+mo[i]+'</option>';
+  for(i=ny-14;i>=ny-60;i--)o2+='<option value="'+i+'">'+i+'</option>';
+  return '<div class="sheet-back"><div class="sheet" role="dialog" aria-modal="true" aria-label="Age check"><span class="badge">Startline</span><h2 style="font-size:24px">Before you start</h2><p class="sub">Startline is for people 18 and over. Tell us your birth month and year.</p>'+
+    '<div class="row"><select id="ageM" aria-label="Birth month">'+o1+'</select><select id="ageY" aria-label="Birth year">'+o2+'</select></div>'+
+    '<button type="button" class="btn primary big" data-action="ageok">Continue</button><p class="err" role="alert">'+esc(ui.ageErr)+'</p>'+
+    '<p class="note">We do not save your birth date. Only a yes or no stays on this device.</p></div></div>';
+}
+function checkAge(){
+  var m=parseInt(($('#ageM')||{}).value,10),y=parseInt(($('#ageY')||{}).value,10);
+  if(!m||!y){ui.ageErr='Please choose your birth month and year.';render();return;}
+  var n=new Date(),age=n.getFullYear()-y-((n.getMonth()+1)<m?1:0);
+  ui.ageErr='';setAge(age>=18?'1':'0');render();
 }
 function vLogin(){
   var a=ENT.cfg.auth||{},why=ui.afterLogin==='checkout'?'Sign in first so Pro follows you to every device.':(ui.afterLogin==='paid'?'Sign in to finish turning on Pro.':'Back up your progress and keep Pro on every device.');
@@ -380,11 +399,11 @@ function vToday(){
   var wins=S.tasks.filter(function(t){return t.done&&t.done>=sod;}).sort(function(a,b){return b.done-a.done;});
   var sess=S.sessions.filter(function(s){return s.start>=sod;});
   var mins=sess.reduce(function(a,s){return a+s.min;},0);
-  var ph={school:'Finish maths homework',college:'Start the assignment',work:'Reply to the client email'}[S.stage]||'Start the assignment';
+  var ph={school:'Revise Unit 4 notes',college:'Start the assignment',work:'Update my résumé'}[S.stage]||'Start the assignment';
   var h='<div class="head"><div class="eyebrow">Startline · '+esc(new Date().toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}))+'</div><h1>Today</h1></div>';
   if(!S.stage){
-    h+='<section class="card"><h2>One quick question</h2><p class="sub" style="margin:6px 0 12px">Where are you right now? It sets your default sprint length.</p><div class="chips">'+
-      chip('School',false,'stage','school')+chip('College',false,'stage','college')+chip('Work',false,'stage','work')+'</div></section>';
+    h+='<section class="card"><h2>One quick question</h2><p class="sub" style="margin:6px 0 12px">What are you working towards? It sets your default sprint length.</p><div class="chips">'+
+      chip('Exam prep',false,'stage','school')+chip('College',false,'stage','college')+chip('Job or internship',false,'stage','work')+'</div></section>';
   }
   h+='<form class="card" data-form="add" autocomplete="off"><label class="lbl" for="tTitle">What have you been putting off?</label>'+
     '<input id="tTitle" type="text" maxlength="90" placeholder="'+esc(ph)+'" value="'+esc(ui.draft.title)+'">'+
@@ -569,8 +588,8 @@ function vReport(){
     '<div class="metric"><div class="k">Focus time<span class="n">Last 7 days</span></div><div class="val">'+o.focus+' min</div></div>'+
     '<div class="metric"><div class="k">Follow-through streak<span class="n">'+(o.streak?'Days in a row with a finished task':'Ready when you are.')+'</span></div><div class="val">'+o.streak+' day'+(o.streak===1?'':'s')+'</div></div>'+
     '<div class="metric"><div class="k">Felt focus<span class="n">Your own rating, last 7 days</span></div><div class="val">'+(o.feel==null?'–':o.feel.toFixed(1)+' / 5')+'</div></div></section>';
-  h+='<section class="card"><h2>Your settings</h2>'+accountRow()+planRow()+'<div class="lbl">Where you are right now</div><div class="chips">'+
-    chip('School',S.stage==='school','stage','school')+chip('College',S.stage==='college','stage','college')+chip('Work',S.stage==='work','stage','work')+'</div>'+
+  h+='<section class="card"><h2>Your settings</h2>'+accountRow()+planRow()+'<div class="lbl">What you are working towards</div><div class="chips">'+
+    chip('Exam prep',S.stage==='school','stage','school')+chip('College',S.stage==='college','stage','college')+chip('Job or internship',S.stage==='work','stage','work')+'</div>'+
     '<p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
     '<div style="margin-top:12px">'+(ui.confirmErase?'<div class="row"><span class="note">'+(ENT.signedIn?'Erase your progress here and in your account?':'Erase everything on this device?')+'</span><button type="button" class="btn small primary" data-action="eraseyes">Yes, erase</button><button type="button" class="btn small" data-action="eraseno">Keep it</button></div>':'<button type="button" class="btn small" data-action="erase">Erase all my data</button>')+'</div>'+deleteAcctRow()+'</section>';
   return h;
@@ -585,8 +604,8 @@ function render(){
   scr.innerHTML=(S.demo?banner():'')+views[ui.tab]();
   scr.scrollTop=top;renderTabs();
   var ov=$('#overlay');if(!ov){ov=document.createElement('div');ov.id='overlay';$('#app').appendChild(ov);}
-  ov.innerHTML=ui.conflict?vConflict():(ui.login?vLogin():(ui.paywall?vPaywall():''));
-  if(ui.login&&!ui.conflict)mountAuth();
+  ov.innerHTML=ageState()!=='1'?vAge():ui.conflict?vConflict():(ui.login?vLogin():(ui.paywall?vPaywall():''));
+  if(ageState()==='1'&&ui.login&&!ui.conflict)mountAuth();
 }
 
 /* ---------- race building ---------- */
@@ -677,6 +696,7 @@ function act(a,d){
     case 'login':ui.afterLogin='';ui.login=true;ui.loginErr='';render();break;
     case 'loginbg':case 'loginclose':ui.login=false;ui.afterLogin='';render();break;
     case 'demologin':onDemo();break;
+    case 'ageok':checkAge();break;
     case 'signout':setTok('');ENT.signedIn=false;ENT.pro=false;ENT.uid='';setLastPro(false);ui.confirmDelAcct=false;render();toast('Signed out. Your tasks stay on this device.');break;
     case 'useCloud':resolveConflict(true);break;
     case 'keepLocal':resolveConflict(false);break;
