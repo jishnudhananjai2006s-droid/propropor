@@ -14,6 +14,28 @@ function fmtDur(ms){var m=ms/MIN;if(m<1)return '<1 min';if(m<100)return Math.rou
 function fmtClock(ms){var s=Math.max(0,Math.ceil(ms/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
 function clip(v,n){return String(v==null?'':v).replace(/\s+/g,' ').trim().slice(0,n);}
 
+function skinNow(){try{return localStorage.getItem('startline.skin')==='stoic'?'stoic':'classic';}catch(e){return 'classic';}}
+function applySkin(){
+  var k=skinNow(),m=document.querySelector('meta[name="theme-color"]');
+  if(k==='stoic')document.documentElement.setAttribute('data-skin','stoic');else document.documentElement.removeAttribute('data-skin');
+  if(m)m.setAttribute('content',k==='stoic'?'#E9E4DA':'#F2F2F2');
+}
+applySkin();
+var MAXIMS=[
+ ['When you rise unwillingly in the morning, tell yourself: I am rising to the work of a human being.','Marcus Aurelius, Meditations 5.1'],
+ ['While we are postponing, life speeds by.','Seneca, Letter 1'],
+ ['Begin at once to live, and count each separate day as a separate life.','Seneca, Letter 101'],
+ ['We suffer more often in imagination than in reality.','Seneca, Letter 13'],
+ ['First say to yourself what you would be; then do what you have to do.','Epictetus, Discourses 3.23'],
+ ['It is not things that disturb us, but our judgments about them.','Epictetus, Enchiridion 5'],
+ ['Waste no more time arguing what a good person should be. Be one.','Marcus Aurelius, Meditations 10.16'],
+ ['Do every act of your life as though it were your last.','Marcus Aurelius, Meditations 2.5']
+];
+function maximCard(){
+  if(skinNow()!=='stoic')return '';
+  var d=new Date(),n=Math.floor((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())-Date.UTC(d.getFullYear(),0,0))/864e5),m=MAXIMS[n%MAXIMS.length];
+  return '<blockquote class="maxim">'+esc(m[0])+'<small>'+esc(m[1])+' (adapted)</small></blockquote>';
+}
 /* ---------- state (stays on this device) ---------- */
 function fresh(){return {v:1,stage:null,tasks:[],sessions:[],parked:[],races:[],timer:null,demo:false,pause:null,pauses:[],seen:{},remind:null,style:null};}
 function load(){try{var r=localStorage.getItem(KEY);if(r){var o=JSON.parse(r);if(o&&o.v===1&&Array.isArray(o.tasks))return o;}}catch(e){}return null;}
@@ -447,6 +469,7 @@ function vToday(){
     h+='<section class="card"><h2>One quick question</h2><p class="sub" style="margin:6px 0 12px">What are you working towards? It sets your default sprint length.</p><div class="chips">'+
       chip('Exam prep',false,'stage','school')+chip('College',false,'stage','college')+chip('Job or internship',false,'stage','work')+'</div></section>';
   }
+  h+=maximCard();
   if(S.stage&&!S.style)h+='<section class="card"><h2>How do you like to work?</h2><p class="sub" style="margin:6px 0 14px">Your timers and breaks will follow this. You can change it later in Report.</p><div class="chips">'+STYLES.map(function(x){return chip(esc(x.name)+' · '+x.work+'/'+x.brk,false,'style',x.id);}).join('')+'</div><p class="note" style="margin-top:12px">Work minutes / break minutes. Pomodoro is 25/5.</p></section>';
   h+=welcomeBack()+seasonCard();
   h+='<form class="card" data-form="add" autocomplete="off"><label class="lbl" for="tTitle">What have you been putting off?</label>'+
@@ -683,7 +706,7 @@ function vReport(){
     '<div class="metric"><div class="k">Felt focus<span class="n">Your own rating, last 7 days</span></div><div class="val">'+(o.feel==null?'–':o.feel.toFixed(1)+' / 5')+'</div></div></section>';
   h+='<details class="card fold"><summary>Settings and account</summary>'+accountRow()+planRow()+'<div class="lbl">What you are working towards</div><div class="chips">'+
     chip('Exam prep',S.stage==='school','stage','school')+chip('College',S.stage==='college','stage','college')+chip('Job or internship',S.stage==='work','stage','work')+'</div>'+
-    '<div class="lbl">How you like to work</div><div class="chips">'+STYLES.map(function(x){return chip(esc(x.name)+' · '+x.work+'/'+x.brk,S.style===x.id,'style',x.id);}).join('')+'</div>'+(styleObj()&&styleObj().brk?'<div class="lbl">Longer break after every 4 sprints</div><div class="chips">'+[[0,'Off'],[15,'15 min'],[20,'20 min'],[30,'30 min']].map(function(x){return chip(x[1],(S.longBrk||0)===x[0],'longbrk',x[0]);}).join('')+'</div>':'')+remindRow()+'<div class="lbl">Break and help</div><div class="row">'+(isPaused()?'<button type="button" class="btn small primary" data-action="resumeplan">Resume my plans</button>':'<button type="button" class="btn small" data-action="pauseplan">Pause my plans</button>')+'<button type="button" class="btn small" data-action="tour">Replay the tour</button></div><p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
+    '<div class="lbl">Look</div><div class="chips">'+chip('Classic',skinNow()==='classic','skin','classic')+chip('Stoic',skinNow()==='stoic','skin','stoic')+'</div><div class="lbl">How you like to work</div><div class="chips">'+STYLES.map(function(x){return chip(esc(x.name)+' · '+x.work+'/'+x.brk,S.style===x.id,'style',x.id);}).join('')+'</div>'+(styleObj()&&styleObj().brk?'<div class="lbl">Longer break after every 4 sprints</div><div class="chips">'+[[0,'Off'],[15,'15 min'],[20,'20 min'],[30,'30 min']].map(function(x){return chip(x[1],(S.longBrk||0)===x[0],'longbrk',x[0]);}).join('')+'</div>':'')+remindRow()+'<div class="lbl">Break and help</div><div class="row">'+(isPaused()?'<button type="button" class="btn small primary" data-action="resumeplan">Resume my plans</button>':'<button type="button" class="btn small" data-action="pauseplan">Pause my plans</button>')+'<button type="button" class="btn small" data-action="tour">Replay the tour</button></div><p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
     '<div style="margin-top:12px">'+(ui.confirmErase?'<div class="row"><span class="note">'+(ENT.signedIn?'Erase your progress here and in your account?':'Erase everything on this device?')+'</span><button type="button" class="btn small primary" data-action="eraseyes">Yes, erase</button><button type="button" class="btn small" data-action="eraseno">Keep it</button></div>':'<button type="button" class="btn small" data-action="erase">Erase all my data</button>')+'</div>'+deleteAcctRow()+'</details>';
   return h;
 }
@@ -821,6 +844,7 @@ function act(a,d){
     case 'toggle':{var t=taskById(d.id);if(!t)break;if(t.done){t.done=null;save();render();}else{completeTask(d.id);render();toast(WINS[Math.floor(Math.random()*WINS.length)]);}break;}
     case 'start2':startSprint(d.id,2);break;
     case 'startt':startSprint(d.id,taskLen(taskById(d.id)));break;
+    case 'skin':try{localStorage.setItem('startline.skin',d.v);}catch(e){}applySkin();render();break;
     case 'style':S.style=d.v;if(d.v==='pomo'&&S.longBrk===undefined)S.longBrk=15;ui.len=null;save();render();toast('Timers now follow your style.');break;
     case 'brk':if(d.id==='long')S.cycle={n:0,at:Date.now()};startBreak(Number(d.v));break;
     case 'longbrk':S.longBrk=Number(d.v);save();render();break;

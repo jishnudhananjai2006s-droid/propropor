@@ -175,3 +175,33 @@ form .fold summary::after{content:"+";margin-left:2px}
 .tour-hl{box-shadow:0 0 0 4px var(--bg),0 0 0 7px var(--accent)!important;border-radius:10px;position:relative;z-index:2}
 
 .touring .screen{padding-bottom:360px}
+
+/* Stoic look: warm stone and basalt, serif headings, square corners. Optional; chosen in Report > Settings. */
+:root[data-skin="stoic"]{
+  --bg:#E9E4DA; --surface:#F5F1E9; --surface-2:#EFEADF;
+  --ink:#1E1C19; --muted:#5B564D; --line:#CBC3B4; --track:#BDB4A3;
+  --accent:#2A2825; --accent-ink:#F5F1E9; --accent-soft:#DDD6C8;
+  --good:#5C6150; --good-soft:#DDD6C8;
+  --f-display:'Iowan Old Style','Palatino Linotype',Palatino,'Book Antiqua',Georgia,serif;
+}
+@media (prefers-color-scheme: dark){
+  :root[data-skin="stoic"]:not([data-theme="light"]){
+    --bg:#131210; --surface:#1B1916; --surface-2:#221F1B;
+    --ink:#E9E3D6; --muted:#A49C8C; --line:#2F2B25; --track:#3F3A32;
+    --accent:#E9E3D6; --accent-ink:#131210; --accent-soft:#2B2823;
+    --good:#B9BFA8; --good-soft:#26231E;
+  }
+}
+:root[data-skin="stoic"][data-theme="dark"]{
+  --bg:#131210; --surface:#1B1916; --surface-2:#221F1B;
+  --ink:#E9E3D6; --muted:#A49C8C; --line:#2F2B25; --track:#3F3A32;
+  --accent:#E9E3D6; --accent-ink:#131210; --accent-soft:#2B2823;
+  --good:#B9BFA8; --good-soft:#26231E;
+}
+:root[data-skin="stoic"] h1,:root[data-skin="stoic"] h2{font-weight:600;letter-spacing:.005em}
+:root[data-skin="stoic"] h1{font-size:32px}
+:root[data-skin="stoic"] .card{border-radius:4px}
+:root[data-skin="stoic"] .btn,:root[data-skin="stoic"] input[type=text],:root[data-skin="stoic"] input[type=date],:root[data-skin="stoic"] select,:root[data-skin="stoic"] textarea{border-radius:3px}
+:root[data-skin="stoic"] .chip{border-radius:3px}
+.maxim{margin:0;padding:2px 0 2px 16px;border-left:2px solid var(--ink);font-family:var(--f-display);font-style:italic;font-size:17px;line-height:1.5}
+.maxim small{display:block;margin-top:6px;font:500 11px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;font-style:normal;color:var(--muted)}
