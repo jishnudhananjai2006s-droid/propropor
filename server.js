@@ -198,6 +198,7 @@ const AI_PROVIDER = (process.env.AI_PROVIDER === 'gemini' && GEM_KEY) ? 'gemini'
 let aiModels = AI_PROVIDER === 'anthropic' ? [process.env.AI_MODEL || 'claude-haiku-4-5-20251001'] : (process.env.AI_MODEL ? [process.env.AI_MODEL] : []);
 let aiProblem = '';
 let aiListedAt = 0;
+const GEM_BASE = process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com';
 const verOf = (n) => (String(n).match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1] * 1;
 // Gemini model names change, so when AI_MODEL is not set we ask Google which stable Flash models this key can use.
 async function discoverGemini() {
@@ -205,11 +206,11 @@ async function discoverGemini() {
   if (Date.now() - aiListedAt < 60e3) return;
   aiListedAt = Date.now();
   try {
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': GEM_KEY }, signal: AbortSignal.timeout(20000) });
+    const r = await fetch(GEM_BASE + '/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': GEM_KEY }, signal: AbortSignal.timeout(20000) });
     if (!r.ok) { aiProblem = 'gemini model list ' + r.status + ' ' + (await r.text()).replace(/\s+/g, ' ').slice(0, 160); console.error('[startline] ' + aiProblem); return; }
     const j = await r.json();
     const names = (j.models || []).filter((m) => (m.supportedGenerationMethods || []).includes('generateContent')).map((m) => String(m.name).replace(/^models\//, ''))
-      .filter((n) => /^gemini-[\d.]+-flash$/.test(n)).sort((a, b) => verOf(b) - verOf(a)).slice(0, 4);
+      .filter((n) => /^gemini-[\d.]+-flash$/.test(n)).sort((a, b) => verOf(b) - verOf(a)).slice(0, 5);
     if (!names.length) { aiProblem = 'no stable Flash model found for this key'; console.error('[startline] ' + aiProblem); return; }
     aiModels = names; aiProblem = '';
     console.log('[startline] AI models found: ' + names.join(', '));
@@ -223,7 +224,7 @@ const clip = (v, n) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().sl
 async function askGemini(model, prompt, maxTokens) {
   const cfg = { maxOutputTokens: Math.max(maxTokens * 3, 4096), temperature: 0.7, responseMimeType: 'application/json' };
   if (/2\.5-flash/.test(model) && !/lite/.test(model)) cfg.thinkingConfig = { thinkingBudget: 0 };
-  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
+  const r = await fetch(GEM_BASE + '/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': GEM_KEY },
     body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: cfg }),
@@ -241,9 +242,17 @@ async function askAI(prompt, maxTokens) {
     if (AI_PROVIDER === 'gemini') {
       await discoverGemini();
       let last = new Error('no model');
+      const busy = [500, 502, 503, 504];
       for (const m of aiModels.slice()) {
-        try { const t = await askGemini(m, prompt, maxTokens); aiModels = [m, ...aiModels.filter((x) => x !== m)]; aiProblem = ''; return t; }
-        catch (e) { last = e; if (![400, 403, 404, 429, 0].includes(e.status) || process.env.AI_MODEL) break; }
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try { const t = await askGemini(m, prompt, maxTokens); aiModels = [m, ...aiModels.filter((x) => x !== m)]; aiProblem = ''; return t; }
+          catch (e) {
+            last = e;
+            if (attempt === 0 && busy.includes(e.status)) { await new Promise((r) => setTimeout(r, 1500)); continue; }
+            break;
+          }
+        }
+        if (process.env.AI_MODEL || ![400, 403, 404, 429, 0, ...busy].includes(last.status)) break; // try the next model
       }
       throw last;
     }

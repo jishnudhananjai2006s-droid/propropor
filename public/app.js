@@ -518,7 +518,7 @@ function vRaceForm(){
       h+='<input id="qa'+i+'" type="text" maxlength="240" placeholder="Or type your own answer" value="'+esc(q.a)+'"></section>';
     });
     if(f.err)h+='<p class="err" role="alert">'+esc(f.err)+'</p>';
-    h+='<button type="button" class="btn primary big" data-action="racebuild">Build my plan</button><button type="button" class="btn ghost" data-action="raceskipq">Skip the questions</button>';
+    h+='<button type="button" class="btn primary big" data-action="racebuild">Build my plan</button><button type="button" class="btn ghost" data-action="raceskipq">Skip the questions</button><button type="button" class="btn ghost" data-action="racebasic">Use a basic plan instead (no AI)</button>';
     return h;
   }
   var wk=[[4,'4 weeks'],[8,'8 weeks'],[12,'12 weeks'],[26,'6 months'],[52,'1 year'],[78,'18 months'],[104,'2 years']];
@@ -664,6 +664,8 @@ function failNote(e){
   if(c==='daily_limit')return 'You reached today\u2019s AI planning limit, so a basic plan was used.';
   return 'The AI planner was not available, so a basic plan was used.';
 }
+function keepBasic(e){var c=e&&e.code;return c==='free_cooldown'||c==='pro_required'||c==='daily_limit'||c==='ai_unavailable';}
+function failStay(f){f.loading=false;f.err='The AI planner is busy right now, so nothing was saved. Please try again in a minute, or choose a basic plan.';ui.reset=false;render();}
 function planBody(f,extra){
   var b={goal:clip(f.goal,160),weeks:f.weeks,mins:f.mins,stage:S.stage||'',today:ymd(Date.now())};
   if(extra)for(var k in extra)b[k]=extra[k];
@@ -688,7 +690,8 @@ async function nextStep(){
     ui.abort=null;if(ui.raceForm!==f)return;
     if(e&&e.name==='AbortError'){f.loading=false;render();return;}
     if(e&&e.code==='login_required'){needLogin();return;}
-    buildRace(true,failNote(e));
+    if(keepBasic(e)){buildRace(true,failNote(e));return;}
+    failStay(f);
   }
 }
 async function buildRace(basic,note0){
@@ -708,6 +711,7 @@ async function buildRace(basic,note0){
       ui.abort=null;if(ui.raceForm!==f)return;
       if(e&&e.name==='AbortError'){f.loading=false;render();return;}
       if(e&&e.code==='login_required'){needLogin();return;}
+      if(!keepBasic(e)){failStay(f);return;}
       note=failNote(e);
     }
   }
