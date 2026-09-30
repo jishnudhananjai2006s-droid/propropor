@@ -65,13 +65,13 @@ app.get('/api/config', (req, res) => {
   res.json({
     provider: billing.mode, testMode: billing.mode === 'demo', priceLabel: billing.priceLabel, trialDays: billing.trialDays,
     auth: { mode: AUTH_MODE, googleClientId: AUTH_MODE === 'google' ? process.env.GOOGLE_CLIENT_ID : '' },
-    ai: { ready: aiReady(), provider: AI_PROVIDER || 'none', problem: aiProblem },
+    ai: { ready: aiReady(), provider: AI_PROVIDER || 'none', problem: aiProblem }, freeCooldownDays: COOLDOWN_DAYS,
   });
 });
 
 app.get('/api/status', (req, res) => {
   if (req.storeDown) return res.status(503).json({ error: 'unavailable' });
-  res.json({ signedIn: !!req.uid, uid: req.uid || '', pro: req.pro, aiFree: !!req.uid && !req.pro && (req.user.freeAi || 0) < FREE_AI_PLANS });
+  res.json({ signedIn: !!req.uid, uid: req.uid || '', pro: req.pro, aiFree: !!req.uid && !req.pro && nextFreeAt(req.user) <= Date.now(), nextFreeAt: req.uid && !req.pro ? nextFreeAt(req.user) : 0 });
 });
 
 /* ---- sign in ---- */
@@ -179,7 +179,7 @@ app.delete('/api/sync', needUser, async (req, res) => {
 });
 app.delete('/api/account', needUser, async (req, res) => {
   if (req.pro) return res.status(409).json({ error: 'cancel_first', message: 'Cancel your subscription first, then delete your account.' });
-  try { await store.del('data_' + req.uid); await store.set('user_' + req.uid, { id: req.uid, created: req.user.created, sub: null, freeAi: req.user.freeAi || 0, minIat: Date.now() }); res.json({ ok: true }); }
+  try { await store.del('data_' + req.uid); await store.set('user_' + req.uid, { id: req.uid, created: req.user.created, sub: null, freeAt: req.user.freeAt || 0, minIat: Date.now() }); res.json({ ok: true }); }
   catch (e) { console.error('[startline] delete account:', e.message); res.status(503).json({ error: 'unavailable', message: 'Please try again in a moment.' }); }
 });
 
@@ -187,7 +187,10 @@ app.delete('/api/account', needUser, async (req, res) => {
 let aiDay = '', aiUsed = new Map(), aiTotal = 0;
 const AI_USER_LIMIT = Number(process.env.AI_DAILY_LIMIT || 30);
 const AI_GLOBAL_LIMIT = Number(process.env.AI_GLOBAL_DAILY_LIMIT || 500);
-const FREE_AI_PLANS = Number(process.env.FREE_AI_PLANS || 1);
+const COOLDOWN_DAYS = Number(process.env.FREE_RACE_COOLDOWN_DAYS || 3);
+const COOLDOWN_MS = COOLDOWN_DAYS * 864e5;
+const FREE_DAILY_CALLS = Number(process.env.FREE_AI_DAILY_CALLS || 4);
+const nextFreeAt = (u) => (u && u.freeAt ? u.freeAt + COOLDOWN_MS : 0);
 const ANTH_KEY = /^AIza/.test(process.env.ANTHROPIC_API_KEY || '') ? '' : (process.env.ANTHROPIC_API_KEY || '');
 // A Google key pasted into the Anthropic field still works: Google keys start with "AIza".
 const GEM_KEY = process.env.GEMINI_API_KEY || (/^AIza/.test(process.env.ANTHROPIC_API_KEY || '') ? process.env.ANTHROPIC_API_KEY : '');
@@ -264,12 +267,13 @@ function parseJson(t) {
 }
 function aiGate(req, res) {
   if (!aiReady()) { res.status(503).json({ error: 'ai_unavailable', message: 'AI planning is not set up yet.' }); return false; }
-  if (!req.pro && (req.user.freeAi || 0) >= FREE_AI_PLANS) {
-    res.status(402).json({ error: 'pro_required', message: 'Your free AI plan is used. Pro gives you unlimited AI plans.' }); return false;
+  if (!req.pro && nextFreeAt(req.user) > Date.now()) {
+    const d = new Date(nextFreeAt(req.user)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
+    res.status(402).json({ error: 'free_cooldown', nextAt: nextFreeAt(req.user), message: 'Free plan: one AI plan every ' + COOLDOWN_DAYS + ' days. Your next one opens on ' + d + '.' }); return false;
   }
   const day = new Date().toISOString().slice(0, 10);
   if (day !== aiDay) { aiDay = day; aiUsed = new Map(); aiTotal = 0; }
-  if ((aiUsed.get(req.uid) || 0) >= AI_USER_LIMIT || aiTotal >= AI_GLOBAL_LIMIT) {
+  if ((aiUsed.get(req.uid) || 0) >= (req.pro ? AI_USER_LIMIT : FREE_DAILY_CALLS) || aiTotal >= AI_GLOBAL_LIMIT) {
     res.status(429).json({ error: 'daily_limit', message: 'Daily AI planning limit reached. Try again tomorrow.' }); return false;
   }
   aiUsed.set(req.uid, (aiUsed.get(req.uid) || 0) + 1); aiTotal++;
@@ -328,7 +332,7 @@ app.post('/api/plan', needUser, async (req, res) => {
   try {
     const out = parseJson(await askAI(prompt, 5000));
     if (!out || !Array.isArray(out.laps)) throw new Error('bad shape');
-    if (!req.pro) await store.set('user_' + req.uid, { ...req.user, freeAi: (req.user.freeAi || 0) + 1 });
+    if (!req.pro) await store.set('user_' + req.uid, { ...req.user, freeAt: Date.now() });
     res.json({ race_name: clip(out.race_name, 60), realism: clip(out.realism, 500), laps: out.laps });
   } catch (e) {
     console.error('[startline] plan:', e.message);

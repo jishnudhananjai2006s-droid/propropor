@@ -22,7 +22,7 @@ var S=load();
 var ui={ageErr:'',login:false,afterLogin:'',pendingPaid:'',loginErr:'',demoName:'',conflict:null,confirmDelAcct:false,paywall:null,busy:false,payErr:'',confirmCancel:false,tab:'today',len:null,focusTask:'',raceOpen:null,raceForm:null,confirmErase:false,confirmDel:false,draft:{title:'',step:'',edited:false},reset:false,abort:null};
 
 /* ---------- plan and billing ---------- */
-var ENT={aiFree:false,pro:false,signedIn:false,uid:'',cfg:{provider:'demo',testMode:false,priceLabel:'',trialDays:0,auth:{mode:'demo',googleClientId:''},ai:{ready:false}}};
+var ENT={nextFreeAt:0,aiFree:false,pro:false,signedIn:false,uid:'',cfg:{provider:'demo',testMode:false,priceLabel:'',trialDays:0,auth:{mode:'demo',googleClientId:''},ai:{ready:false}}};
 var TKEY='startline.token',PKEY='startline.pro';
 function getTok(){try{return localStorage.getItem(TKEY)||'';}catch(e){return '';}}
 function setTok(t){try{if(t)localStorage.setItem(TKEY,t);else localStorage.removeItem(TKEY);}catch(e){}}
@@ -39,7 +39,7 @@ async function api(path,body,signal,method){
   return j;
 }
 async function refreshStatus(){
-  try{var s=await api('/api/status');ENT.signedIn=!!s.signedIn;ENT.uid=s.uid||'';ENT.pro=!!s.pro;ENT.aiFree=!!s.aiFree;setLastPro(ENT.pro);if(!s.signedIn&&getTok())setTok('');}
+  try{var s=await api('/api/status');ENT.signedIn=!!s.signedIn;ENT.uid=s.uid||'';ENT.pro=!!s.pro;ENT.aiFree=!!s.aiFree;ENT.nextFreeAt=Number(s.nextFreeAt)||0;setLastPro(ENT.pro);if(!s.signedIn&&getTok())setTok('');}
   catch(e){ENT.signedIn=!!getTok();ENT.pro=ENT.signedIn&&lastPro();}
 }
 function loadScript(src){return new Promise(function(res,rej){var s=document.createElement('script');s.src=src;s.onload=res;s.onerror=function(){rej(new Error('Could not load the payment window. Check your connection.'));};document.head.appendChild(s);});}
@@ -243,12 +243,19 @@ function deleteAcctRow(){
   if(ui.confirmDelAcct)return '<div class="row" style="margin-top:12px"><span class="note">Delete your account and its backup?</span><button type="button" class="btn small primary" data-action="deleteyes">Yes, delete</button><button type="button" class="btn small" data-action="deleteno">Keep it</button></div>';
   return '<div style="margin-top:8px"><button type="button" class="btn ghost small" data-action="deleteacct" style="padding:0">Delete my account</button></div>';
 }
+function freeRaceWait(){
+  var days=Number(ENT.cfg.freeCooldownDays)||3,last=0;
+  S.races.forEach(function(r){if(!r.demo&&r.created>last)last=r.created;});
+  var t=Math.max(last?last+days*DAY:0,ENT.nextFreeAt||0);
+  return Math.max(0,t-Date.now());
+}
+function freeRaceDate(){return new Date(Date.now()+freeRaceWait()).toLocaleDateString(undefined,{day:'numeric',month:'short'});}
 function vPaywall(){
-  var c=ENT.cfg,why={races:'You have used your free race.',ai:'Get a plan tailored to your goal.',report:'See how much sooner you start.',general:'Go further with Pro.'}[ui.paywall]||'Go further with Pro.';
+  var c=ENT.cfg,why={races:'Free plan: one race every '+(Number(c.freeCooldownDays)||3)+' days.',ai:'Get a plan tailored to your goal.',report:'See how much sooner you start.',general:'Go further with Pro.'}[ui.paywall]||'Go further with Pro.';
   return '<div class="sheet-back" data-action="paywallbg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Startline Pro">'+
     '<div class="row"><span class="badge">Startline Pro</span>'+(c.testMode?'<span class="badge">Test mode</span>':'')+'</div>'+
-    '<h2 style="font-size:24px">'+esc(why)+'</h2>'+
-    '<ul class="perks"><li>Unlimited races, each planned by AI around your answers</li><li>Unlimited races</li><li>Week-by-week proof that you start sooner</li><li>Cancel any time</li></ul>'+
+    '<h2 style="font-size:24px">'+esc(why)+'</h2>'+(ui.paywall==='races'&&freeRaceWait()>0?'<p class="sub">Your next free race opens on '+esc(freeRaceDate())+'. Pro has no waiting.</p>':'')+
+    '<ul class="perks"><li>Start a new race any time, each planned by AI around your answers</li><li>Week-by-week proof that you start sooner</li><li>Cancel any time</li></ul>'+
     '<div><span class="price">'+esc(c.priceLabel)+'</span>'+(c.trialDays?'<div class="note">'+c.trialDays+'-day free trial first.</div>':'')+'</div>'+
     (!ENT.signedIn?'<p class="note">You sign in first, so Pro follows you to every device.</p>':'')+'<button type="button" class="btn primary big" data-action="subscribe"'+(ui.busy?' disabled':'')+'>'+(ui.busy?'One moment...':(!ENT.signedIn?'Sign in to continue':(c.trialDays?'Start '+c.trialDays+'-day free trial':'Go Pro')))+'</button>'+
     (c.testMode?'<p class="note">Test mode: payments are simulated. Nobody is charged.</p>':'')+
@@ -488,7 +495,7 @@ function vRace(){
 function vRaceList(){
   var h='<div class="head"><div class="eyebrow">Long-term goals</div><h1>Race</h1></div><p class="sub">Give it a goal and a finish line. You answer a few questions, and the planner builds laps of small steps that fit you, for up to 2 years.</p>';
   h+='<button type="button" class="btn primary big" data-action="racenew">New race</button>';
-  if(!ENT.pro)h+='<p class="note">Free plan: 1 race, planned by AI around your answers. More races are part of Pro. <button type="button" class="btn ghost small" data-action="gopro" style="min-height:32px;padding:0 6px;color:var(--accent)">See Pro</button></p>';
+  if(!ENT.pro)h+='<p class="note">Free plan: one AI-planned race every '+(Number(ENT.cfg.freeCooldownDays)||3)+' days. Pro has no waiting. <button type="button" class="btn ghost small" data-action="gopro" style="min-height:32px;padding:0 6px;color:var(--accent)">See Pro</button></p>';
   if(!S.races.length)h+='<p class="empty">No races yet. Pick one goal that matters to you.</p>';
   S.races.forEach(function(r){
     var st=raceStats(r);
@@ -521,7 +528,7 @@ function vRaceForm(){
     (f.err?'<p class="err" style="margin-top:12px" role="alert">'+esc(f.err)+'</p>':'')+
     '<div style="margin-top:16px"><button type="button" class="btn primary big" data-action="racenext">Continue</button></div>'+
     '<button type="button" class="btn ghost" data-action="racebasic" style="margin-top:6px">Use a basic plan instead (no AI)</button>'+
-    '<p class="note" style="margin-top:10px">Next you answer a few short questions about your situation, so the plan fits you. Only your goal, your answers and the dates are sent to the AI, and only when you tap Continue. '+(ENT.pro?'':'Your first plan is free. More are part of Pro.')+'</p></section>';
+    '<p class="note" style="margin-top:10px">Next you answer a few short questions about your situation, so the plan fits you. Only your goal, your answers and the dates are sent to the AI, and only when you tap Continue. '+(ENT.pro?'':'Free plan: one race every '+(Number(ENT.cfg.freeCooldownDays)||3)+' days.')+'</p></section>';
   return h;
 }
 function vRaceDetail(r){
@@ -652,7 +659,8 @@ function normalizeLaps(out,cap){
 function aiOn(){return !!(ENT.cfg.ai&&ENT.cfg.ai.ready);}
 function failNote(e){
   var c=e&&e.code;
-  if(c==='pro_required')return 'Your free AI plan is used, so a basic plan was used. Pro writes unlimited personal plans.';
+  if(c==='free_cooldown')return e.message+' A basic plan was used this time.';
+  if(c==='pro_required')return 'A basic plan was used. Pro writes unlimited personal plans.';
   if(c==='daily_limit')return 'You reached today\u2019s AI planning limit, so a basic plan was used.';
   return 'The AI planner was not available, so a basic plan was used.';
 }
@@ -733,7 +741,7 @@ function act(a,d){
     case 'notyet':case 'dismiss':S.timer=null;save();render();break;
     case 'momentum':if(T&&T.taskId)startSprint(T.taskId,defLen());break;
     case 'unpark':S.parked=S.parked.filter(function(x){return x.id!==d.id;});save();render();break;
-    case 'racenew':if(!ENT.pro&&S.races.filter(function(r){return !r.demo;}).length>=1){ui.paywall='races';render();break;}ui.raceOpen=null;ui.raceForm={goal:'',weeks:8,mins:30,loading:false,err:'',step:'goal',qs:[]};ui.reset=true;render();var g=$('#rGoal');if(g)g.focus();break;
+    case 'racenew':if(!ENT.pro&&freeRaceWait()>0){ui.paywall='races';render();break;}ui.raceOpen=null;ui.raceForm={goal:'',weeks:8,mins:30,loading:false,err:'',step:'goal',qs:[]};ui.reset=true;render();var g=$('#rGoal');if(g)g.focus();break;
     case 'raceback':if(ui.raceForm){if(!ui.raceForm.loading){ui.raceForm=null;render();}}else{ui.raceOpen=null;ui.confirmDel=false;ui.reset=true;render();}break;
     case 'raceopen':ui.raceOpen=d.id;ui.reset=true;render();break;
     case 'rweeks':ui.raceForm.weeks=Number(d.v);render();break;
