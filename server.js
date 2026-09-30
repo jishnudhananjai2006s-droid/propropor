@@ -61,10 +61,11 @@ const SESSION_MS = 90 * 864e5;
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 app.get('/api/config', (req, res) => {
+  if (typeof aiReady === 'function' && !aiReady()) discoverGemini();
   res.json({
     provider: billing.mode, testMode: billing.mode === 'demo', priceLabel: billing.priceLabel, trialDays: billing.trialDays,
     auth: { mode: AUTH_MODE, googleClientId: AUTH_MODE === 'google' ? process.env.GOOGLE_CLIENT_ID : '' },
-    ai: { ready: AI_READY },
+    ai: { ready: aiReady(), provider: AI_PROVIDER || 'none', problem: aiProblem },
   });
 });
 
@@ -187,38 +188,73 @@ let aiDay = '', aiUsed = new Map(), aiTotal = 0;
 const AI_USER_LIMIT = Number(process.env.AI_DAILY_LIMIT || 30);
 const AI_GLOBAL_LIMIT = Number(process.env.AI_GLOBAL_DAILY_LIMIT || 500);
 const FREE_AI_PLANS = Number(process.env.FREE_AI_PLANS || 1);
-const AI_PROVIDER = (process.env.AI_PROVIDER === 'gemini' && process.env.GEMINI_API_KEY) ? 'gemini'
-  : (process.env.ANTHROPIC_API_KEY ? 'anthropic' : (process.env.GEMINI_API_KEY ? 'gemini' : ''));
-const AI_MODEL = process.env.AI_MODEL || (AI_PROVIDER === 'anthropic' ? 'claude-haiku-4-5-20251001' : '');
-const AI_READY = !!AI_PROVIDER && !!AI_MODEL;
-if (AI_PROVIDER === 'gemini' && !AI_MODEL) console.warn('[startline] GEMINI_API_KEY is set but AI_MODEL is not. Set AI_MODEL to a Gemini model id from Google\'s pricing page. Built-in plans are used until then.');
-console.log('[startline] AI planner: ' + (AI_READY ? AI_PROVIDER + ' / ' + AI_MODEL : 'not set up (built-in plans)'));
+const ANTH_KEY = /^AIza/.test(process.env.ANTHROPIC_API_KEY || '') ? '' : (process.env.ANTHROPIC_API_KEY || '');
+// A Google key pasted into the Anthropic field still works: Google keys start with "AIza".
+const GEM_KEY = process.env.GEMINI_API_KEY || (/^AIza/.test(process.env.ANTHROPIC_API_KEY || '') ? process.env.ANTHROPIC_API_KEY : '');
+const AI_PROVIDER = (process.env.AI_PROVIDER === 'gemini' && GEM_KEY) ? 'gemini' : (ANTH_KEY ? 'anthropic' : (GEM_KEY ? 'gemini' : ''));
+let aiModels = AI_PROVIDER === 'anthropic' ? [process.env.AI_MODEL || 'claude-haiku-4-5-20251001'] : (process.env.AI_MODEL ? [process.env.AI_MODEL] : []);
+let aiProblem = '';
+let aiListedAt = 0;
+const verOf = (n) => (String(n).match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1] * 1;
+// Gemini model names change, so when AI_MODEL is not set we ask Google which stable Flash models this key can use.
+async function discoverGemini() {
+  if (AI_PROVIDER !== 'gemini' || process.env.AI_MODEL || (aiModels.length && Date.now() - aiListedAt < 3600e3)) return;
+  if (Date.now() - aiListedAt < 60e3) return;
+  aiListedAt = Date.now();
+  try {
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': GEM_KEY }, signal: AbortSignal.timeout(20000) });
+    if (!r.ok) { aiProblem = 'gemini model list ' + r.status + ' ' + (await r.text()).replace(/\s+/g, ' ').slice(0, 160); console.error('[startline] ' + aiProblem); return; }
+    const j = await r.json();
+    const names = (j.models || []).filter((m) => (m.supportedGenerationMethods || []).includes('generateContent')).map((m) => String(m.name).replace(/^models\//, ''))
+      .filter((n) => /^gemini-[\d.]+-flash$/.test(n)).sort((a, b) => verOf(b) - verOf(a)).slice(0, 4);
+    if (!names.length) { aiProblem = 'no stable Flash model found for this key'; console.error('[startline] ' + aiProblem); return; }
+    aiModels = names; aiProblem = '';
+    console.log('[startline] AI models found: ' + names.join(', '));
+  } catch (e) { aiProblem = 'gemini model list failed: ' + e.message; console.error('[startline] ' + aiProblem); }
+}
+const aiReady = () => !!AI_PROVIDER && aiModels.length > 0;
+discoverGemini();
+console.log('[startline] AI planner: ' + (AI_PROVIDER ? AI_PROVIDER + (aiModels.length ? ' / ' + aiModels.join(', ') : ' (finding a model)') : 'not set up (no key found; built-in plans)'));
 const clip = (v, n) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n);
 
-async function askAI(prompt, maxTokens) {
-  if (AI_PROVIDER === 'gemini') {
-    const cfg = { maxOutputTokens: maxTokens, temperature: 0.7, responseMimeType: 'application/json' };
-    if (/2\.5-flash/.test(AI_MODEL) && !/lite/.test(AI_MODEL)) cfg.thinkingConfig = { thinkingBudget: 0 };
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(AI_MODEL) + ':generateContent', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: cfg }),
-      signal: AbortSignal.timeout(90000),
-    });
-    if (!r.ok) throw new Error('gemini ' + r.status);
-    const j = await r.json();
-    const parts = (((j.candidates || [])[0] || {}).content || {}).parts || [];
-    return parts.map((p) => p.text || '').join('');
-  }
-  const r = await fetch((process.env.AI_BASE_URL || 'https://api.anthropic.com') + '/v1/messages', {
+async function askGemini(model, prompt, maxTokens) {
+  const cfg = { maxOutputTokens: maxTokens, temperature: 0.7, responseMimeType: 'application/json' };
+  if (/2\.5-flash/.test(model) && !/lite/.test(model)) cfg.thinkingConfig = { thinkingBudget: 0 };
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: AI_MODEL, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': GEM_KEY },
+    body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: cfg }),
     signal: AbortSignal.timeout(90000),
   });
-  if (!r.ok) throw new Error('anthropic ' + r.status);
+  if (!r.ok) { const e = new Error('gemini ' + model + ' ' + r.status + ' ' + (await r.text()).replace(/\s+/g, ' ').slice(0, 200)); e.status = r.status; throw e; }
   const j = await r.json();
-  return (j.content || []).map((b) => b.text || '').join('');
+  const parts = (((j.candidates || [])[0] || {}).content || {}).parts || [];
+  const t = parts.map((p) => p.text || '').join('');
+  if (!t) { const e = new Error('gemini ' + model + ' empty answer'); e.status = 0; throw e; }
+  return t;
+}
+async function askAI(prompt, maxTokens) {
+  try {
+    if (AI_PROVIDER === 'gemini') {
+      await discoverGemini();
+      let last = new Error('no model');
+      for (const m of aiModels.slice()) {
+        try { const t = await askGemini(m, prompt, maxTokens); aiModels = [m, ...aiModels.filter((x) => x !== m)]; aiProblem = ''; return t; }
+        catch (e) { last = e; if (![400, 403, 404, 429, 0].includes(e.status) || process.env.AI_MODEL) break; }
+      }
+      throw last;
+    }
+    const r = await fetch((process.env.AI_BASE_URL || 'https://api.anthropic.com') + '/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': ANTH_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: aiModels[0], max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
+      signal: AbortSignal.timeout(90000),
+    });
+    if (!r.ok) throw new Error('anthropic ' + r.status + ' ' + (await r.text()).replace(/\s+/g, ' ').slice(0, 200));
+    const j = await r.json();
+    aiProblem = '';
+    return (j.content || []).map((b) => b.text || '').join('');
+  } catch (e) { aiProblem = String(e.message).slice(0, 200); throw e; }
 }
 function parseJson(t) {
   try { return JSON.parse(t); } catch (e) { /* fall through */ }
@@ -227,7 +263,7 @@ function parseJson(t) {
   return null;
 }
 function aiGate(req, res) {
-  if (!AI_READY) { res.status(503).json({ error: 'ai_unavailable', message: 'AI planning is not set up yet.' }); return false; }
+  if (!aiReady()) { res.status(503).json({ error: 'ai_unavailable', message: 'AI planning is not set up yet.' }); return false; }
   if (!req.pro && (req.user.freeAi || 0) >= FREE_AI_PLANS) {
     res.status(402).json({ error: 'pro_required', message: 'Your free AI plan is used. Pro gives you unlimited AI plans.' }); return false;
   }

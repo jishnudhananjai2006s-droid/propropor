@@ -666,7 +666,7 @@ async function nextStep(){
   var f=ui.raceForm;if(!f)return;
   if(clip(f.goal,160).length<3){f.err='Write your goal first. A few words is enough.';render();return;}
   f.err='';
-  if(!aiOn()){buildRace(true,'The AI planner is not switched on yet, so a basic plan was used.');return;}
+  if(!aiOn()){buildRace(true,'The AI planner is not set up on this server yet, so a basic plan was used.');return;}
   if(!ENT.signedIn){needLogin();return;}
   f.loading='questions';render();
   var ctl=new AbortController();ui.abort=ctl;
