@@ -509,6 +509,24 @@ function vRaceList(){
   h+=crewRow();
   return h;
 }
+function etaEst(f){
+  var k=f.loading==='questions'?'questions':'plan',def=k==='questions'?15000:(35000+Math.round((f.weeks||8)/104*25000));
+  try{var o=JSON.parse(localStorage.getItem('startline.eta')||'{}');if(o[k])def=o[k];}catch(e){}
+  return def;
+}
+function etaSave(k,ms){
+  if(!(ms>2000))return;
+  try{var o=JSON.parse(localStorage.getItem('startline.eta')||'{}');o[k]=Math.min(120000,Math.round(o[k]?o[k]*0.6+ms*0.4:ms));localStorage.setItem('startline.eta',JSON.stringify(o));}catch(e){}
+}
+function etaText(f){
+  var est=etaEst(f),left=est-(Date.now()-(f.t0||Date.now()));
+  return left>1500?'About '+Math.ceil(left/1000)+' seconds left':'Almost there. This one is taking a little longer than usual.';
+}
+setInterval(function(){
+  var f=ui.raceForm,el=$('#eta');if(!f||!f.loading||!el)return;
+  el.textContent=etaText(f);var b=$('#etaFill');
+  if(b)b.style.width=Math.min(95,Math.max(2,(Date.now()-f.t0)/etaEst(f)*100))+'%';
+},1000);
 var THINK=['Reading your goal','Caramelizing onions','Triangulating your deadline','Untangling your calendar','Sharpening pencils','Weighing the hard weeks','Charting the laps','Pacing the marathon','Balancing the rhythm','Whisking in your answers','Stress-testing the schedule','Polishing the finish line','Consulting the compass','Folding in rest days','Calibrating realism'],thkI=0;
 setInterval(function(){var el=document.getElementById('thk');if(!el)return;thkI=(thkI+1+Math.floor(Math.random()*3))%THINK.length;el.textContent=THINK[thkI]+'...';},2200);
 function pingDone(t,keep){try{if(ui.notify&&document.hidden&&typeof Notification!=='undefined'&&Notification.permission==='granted')new Notification('Startline',{body:t});}catch(e){}if(!keep)ui.notify=false;}
@@ -518,7 +536,7 @@ function vRaceForm(){
     var m=f.loading==='questions'?'Reading your goal and preparing questions for you.':'Building your plan. Longer plans can take up to a minute.';
     var nb='';
     if(typeof Notification!=='undefined'&&Notification.permission!=='denied'){nb=Notification.permission==='granted'&&ui.notify?'<p class="note">We will notify you when it is ready. You can switch apps.</p>':'<button type="button" class="btn" data-action="racenotify">Notify me when ready</button> ';}
-    return h+'<section class="card"><p><span class="spin"></span>'+m+'</p><p class="note" aria-live="off" id="thk">'+THINK[0]+'...</p><div style="margin-top:14px">'+nb+'<button type="button" class="btn" data-action="racecancel">Cancel</button></div></section>';
+    return h+'<section class="card"><p><span class="spin"></span>'+m+'</p><p class="note" aria-live="off" id="thk">'+THINK[0]+'...</p><div class="bar" style="margin-top:14px"><i id="etaFill" style="width:2%"></i></div><p class="note mono" id="eta" style="margin-top:8px">'+etaText(f)+'</p><div style="margin-top:14px">'+nb+'<button type="button" class="btn" data-action="racecancel">Cancel</button></div></section>';
   }
   if(f.step==='questions'){
     h+='<p class="sub">Your answers shape the plan. Tap an option or type your own. Skip any you like.</p>';
@@ -695,14 +713,14 @@ async function nextStep(){
   f.err='';
   if(!aiOn()){buildRace(true,'The AI planner is not set up on this server yet, so a basic plan was used.');return;}
   if(!ENT.signedIn){needLogin();return;}
-  f.loading='questions';render();
+  f.loading='questions';f.t0=Date.now();render();
   var ctl=new AbortController();ui.abort=ctl;
   try{
     var out=await api('/api/plan/questions',planBody(f),ctl.signal);
     ui.abort=null;if(ui.raceForm!==f)return;
     f.qs=(out.questions||[]).map(function(q){return {q:clip(q.q,140),options:(q.options||[]).map(function(o){return clip(o,40);}),a:''};});
     if(f.qs.length<2)throw {code:'bad_shape'};
-    f.event=out.event&&evOk(out.event)?out.event:null;f.useEvent=!!f.event;f.step='questions';f.loading=false;ui.reset=true;render();pingDone('Your questions are ready.',1);
+    etaSave('questions',Date.now()-f.t0);f.event=out.event&&evOk(out.event)?out.event:null;f.useEvent=!!f.event;f.step='questions';f.loading=false;ui.reset=true;render();pingDone('Your questions are ready.',1);
   }catch(e){
     ui.abort=null;if(ui.raceForm!==f)return;
     if(e&&e.name==='AbortError'){f.loading=false;render();return;}
@@ -716,14 +734,14 @@ async function buildRace(basic,note0){
   if(goal.length<3){f.err='Write your goal first. A few words is enough.';render();return;}
   var useEv=!!(f.event&&f.useEvent&&evOk(f.event)),due=useEv?f.event.date:ymd(addDays(startOfDay(Date.now()),f.weeks*7)),cap=Math.max(f.mins,10),plan=null,note=note0||'',ai=false;
   if(!basic){
-    f.loading='plan';f.err='';render();
+    f.loading='plan';f.t0=Date.now();f.err='';render();
     var ctl=new AbortController();ui.abort=ctl;
     var ans=(f.qs||[]).filter(function(x){return x.a&&x.a.trim();}).map(function(x){return {q:x.q,a:clip(x.a,240)};});
     try{
       var out=await api('/api/plan',planBody(f,{answers:ans}),ctl.signal);
       plan=normalizeLaps(out,cap);
       if(!plan)throw {code:'bad_shape'};
-      ai=true;
+      ai=true;etaSave('plan',Date.now()-f.t0);
     }catch(e){
       ui.abort=null;if(ui.raceForm!==f)return;
       if(e&&e.name==='AbortError'){f.loading=false;render();return;}
