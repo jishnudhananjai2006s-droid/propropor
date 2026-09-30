@@ -14,7 +14,7 @@ Startline is for people **18 and over**, aimed at ages 18 to 22 (college, exam p
 |---|---|---|
 | Tasks, first-step suggestions, focus sprints, wins | Yes | Yes |
 | Streak, focus minutes, completion rate | Yes | Yes |
-| Races | 1, built-in plan | Unlimited, AI-written plan |
+| Races | 1, with a personal AI plan | Unlimited, personal AI plans |
 | Before/after start-delay comparison and weekly chart | Locked | Yes |
 
 ## Run it on Replit
@@ -76,9 +76,15 @@ Stripe accounts for Indian businesses are invite-only, so Razorpay is the practi
 2. Set `STRIPE_SECRET_KEY` and `STRIPE_PRICE_ID`.
 3. In Stripe settings, turn on the Customer Portal so users can manage or cancel.
 
-### AI race planner (Pro only)
+### AI race planner
 
-Set `ANTHROPIC_API_KEY` (from console.anthropic.com). It uses a small, low-cost model. Spending is capped: 20 plans per subscriber per day and 500 per day overall. Change them with `AI_DAILY_LIMIT` and `AI_GLOBAL_DAILY_LIMIT`. Without a key, Pro users get the built-in plan.
+The planner asks 3 to 5 follow-up questions about the goal, then writes a plan of up to 2 years (up to 12 laps, each with a focus, a weekly rhythm and small steps), plus an honest "is this realistic?" note. Everyone who signs in gets one free AI plan (`FREE_AI_PLANS`), and Pro gets more. Without an AI key the app uses a basic built-in plan and says so.
+
+Turn it on with one of these Secrets (Render: Environment tab):
+- **Anthropic (paid, cents per plan):** `ANTHROPIC_API_KEY` from console.anthropic.com. It uses a small, low-cost model by default. Change it with `AI_MODEL`.
+- **Google Gemini (has a free tier for some models):** set `AI_PROVIDER=gemini`, `GEMINI_API_KEY` from aistudio.google.com, and `AI_MODEL` to a model id that Google's pricing page lists with a free tier. There is no default, because model names change. Free-tier data may be used by Google, so read their terms.
+
+Spending is capped: 30 AI calls per person per day and 500 per day overall. Change them with `AI_DAILY_LIMIT` and `AI_GLOBAL_DAILY_LIMIT`.
 
 ### Publish
 

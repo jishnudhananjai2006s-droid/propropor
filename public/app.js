@@ -22,7 +22,7 @@ var S=load();
 var ui={ageErr:'',login:false,afterLogin:'',pendingPaid:'',loginErr:'',demoName:'',conflict:null,confirmDelAcct:false,paywall:null,busy:false,payErr:'',confirmCancel:false,tab:'today',len:null,focusTask:'',raceOpen:null,raceForm:null,confirmErase:false,confirmDel:false,draft:{title:'',step:'',edited:false},reset:false,abort:null};
 
 /* ---------- plan and billing ---------- */
-var ENT={pro:false,signedIn:false,uid:'',cfg:{provider:'demo',testMode:false,priceLabel:'',trialDays:0,auth:{mode:'demo',googleClientId:''}}};
+var ENT={aiFree:false,pro:false,signedIn:false,uid:'',cfg:{provider:'demo',testMode:false,priceLabel:'',trialDays:0,auth:{mode:'demo',googleClientId:''},ai:{ready:false}}};
 var TKEY='startline.token',PKEY='startline.pro';
 function getTok(){try{return localStorage.getItem(TKEY)||'';}catch(e){return '';}}
 function setTok(t){try{if(t)localStorage.setItem(TKEY,t);else localStorage.removeItem(TKEY);}catch(e){}}
@@ -39,7 +39,7 @@ async function api(path,body,signal,method){
   return j;
 }
 async function refreshStatus(){
-  try{var s=await api('/api/status');ENT.signedIn=!!s.signedIn;ENT.uid=s.uid||'';ENT.pro=!!s.pro;setLastPro(ENT.pro);if(!s.signedIn&&getTok())setTok('');}
+  try{var s=await api('/api/status');ENT.signedIn=!!s.signedIn;ENT.uid=s.uid||'';ENT.pro=!!s.pro;ENT.aiFree=!!s.aiFree;setLastPro(ENT.pro);if(!s.signedIn&&getTok())setTok('');}
   catch(e){ENT.signedIn=!!getTok();ENT.pro=ENT.signedIn&&lastPro();}
 }
 function loadScript(src){return new Promise(function(res,rej){var s=document.createElement('script');s.src=src;s.onload=res;s.onerror=function(){rej(new Error('Could not load the payment window. Check your connection.'));};document.head.appendChild(s);});}
@@ -178,6 +178,7 @@ function runAfterLogin(){
   if(a==='checkout'){
     if(ENT.pro){ui.paywall=null;render();toast('Pro is already on for your account.');}
     else startCheckout();
+  }else if(a==='plan'){if(ui.raceForm&&!ui.raceForm.loading&&ui.raceForm.step==='goal')nextStep();
   }else if(a==='paid'&&ui.pendingPaid){var id=ui.pendingPaid;ui.pendingPaid='';confirmPayment({session_id:id});}
 }
 async function eraseAll(){
@@ -247,7 +248,7 @@ function vPaywall(){
   return '<div class="sheet-back" data-action="paywallbg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Startline Pro">'+
     '<div class="row"><span class="badge">Startline Pro</span>'+(c.testMode?'<span class="badge">Test mode</span>':'')+'</div>'+
     '<h2 style="font-size:24px">'+esc(why)+'</h2>'+
-    '<ul class="perks"><li>AI-written race plans, tailored to your goal</li><li>Unlimited races</li><li>Week-by-week proof that you start sooner</li><li>Cancel any time</li></ul>'+
+    '<ul class="perks"><li>Unlimited races, each planned by AI around your answers</li><li>Unlimited races</li><li>Week-by-week proof that you start sooner</li><li>Cancel any time</li></ul>'+
     '<div><span class="price">'+esc(c.priceLabel)+'</span>'+(c.trialDays?'<div class="note">'+c.trialDays+'-day free trial first.</div>':'')+'</div>'+
     (!ENT.signedIn?'<p class="note">You sign in first, so Pro follows you to every device.</p>':'')+'<button type="button" class="btn primary big" data-action="subscribe"'+(ui.busy?' disabled':'')+'>'+(ui.busy?'One moment...':(!ENT.signedIn?'Sign in to continue':(c.trialDays?'Start '+c.trialDays+'-day free trial':'Go Pro')))+'</button>'+
     (c.testMode?'<p class="note">Test mode: payments are simulated. Nobody is charged.</p>':'')+
@@ -336,9 +337,11 @@ function seedDemo(){
   S.demo=true;
 }
 function makeRace(goal,name,due,mins,laps,ai,demo){
-  var start=startOfDay(Date.now()),end=parseYmd(due),n=laps.length;
-  var r={id:uid(),goal:goal,name:name,due:due,mins:mins,created:Date.now(),ai:!!ai,note:'',laps:laps.map(function(l,i){
-    return {id:uid(),title:l.title,due:ymd(start+(end-start)*(i+1)/n),steps:l.steps.map(function(s){return {id:uid(),text:s.text,min:s.min,done:s.done||null,taskId:null};})};
+  var start=startOfDay(Date.now()),end=parseYmd(due);
+  var tw=laps.reduce(function(a,l){return a+(l.weight||1);},0),cum=0;
+  var r={id:uid(),goal:goal,name:name,due:due,mins:mins,created:Date.now(),ai:!!ai,note:'',laps:laps.map(function(l){
+    cum+=(l.weight||1);
+    return {id:uid(),title:l.title,focus:l.focus||'',rhythm:l.rhythm||'',due:ymd(start+(end-start)*cum/tw),steps:l.steps.map(function(s){return {id:uid(),text:s.text,min:s.min,done:s.done||null,taskId:null};})};
   })};
   if(demo)r.demo=1;
   return r;
@@ -483,9 +486,9 @@ function vRace(){
   return r?vRaceDetail(r):vRaceList();
 }
 function vRaceList(){
-  var h='<div class="head"><div class="eyebrow">Long-term goals</div><h1>Race</h1></div><p class="sub">Give it a goal and a finish line. The planner turns it into laps of small steps you can start in under 2 minutes.</p>';
+  var h='<div class="head"><div class="eyebrow">Long-term goals</div><h1>Race</h1></div><p class="sub">Give it a goal and a finish line. You answer a few questions, and the planner builds laps of small steps that fit you, for up to 2 years.</p>';
   h+='<button type="button" class="btn primary big" data-action="racenew">New race</button>';
-  if(!ENT.pro)h+='<p class="note">Free plan: 1 race with a built-in plan. <button type="button" class="btn ghost small" data-action="gopro" style="min-height:32px;padding:0 6px;color:var(--accent)">See Pro</button></p>';
+  if(!ENT.pro)h+='<p class="note">Free plan: 1 race, planned by AI around your answers. More races are part of Pro. <button type="button" class="btn ghost small" data-action="gopro" style="min-height:32px;padding:0 6px;color:var(--accent)">See Pro</button></p>';
   if(!S.races.length)h+='<p class="empty">No races yet. Pick one goal that matters to you.</p>';
   S.races.forEach(function(r){
     var st=raceStats(r);
@@ -495,23 +498,38 @@ function vRaceList(){
   return h;
 }
 function vRaceForm(){
-  var f=ui.raceForm,h='<button type="button" class="btn ghost small" data-action="raceback" style="align-self:flex-start">Back</button><div class="head"><div class="eyebrow">New race</div><h1>Set the finish line</h1></div>';
+  var f=ui.raceForm,h='<button type="button" class="btn ghost small" data-action="raceback" style="align-self:flex-start">Back</button><div class="head"><div class="eyebrow">New race</div><h1>'+(f.step==='questions'?'A few questions':'Set the finish line')+'</h1></div>';
   if(f.loading){
-    return h+'<section class="card"><p><span class="spin"></span>Planning your laps. This can take a few seconds.</p><div style="margin-top:14px"><button type="button" class="btn" data-action="racecancel">Cancel</button></div></section>';
+    var m=f.loading==='questions'?'Reading your goal and preparing questions for you.':'Building your plan. Longer plans can take up to a minute.';
+    return h+'<section class="card"><p><span class="spin"></span>'+m+'</p><div style="margin-top:14px"><button type="button" class="btn" data-action="racecancel">Cancel</button></div></section>';
   }
-  h+='<section class="card"><label class="lbl" for="rGoal">Your goal</label><input id="rGoal" type="text" maxlength="120" placeholder="e.g. Get an internship in marketing" value="'+esc(f.goal)+'">'+
-    '<div class="lbl">Finish line</div><div class="chips">'+[[4,'4 weeks'],[8,'8 weeks'],[12,'12 weeks'],[26,'6 months']].map(function(x){return chip(x[1],f.weeks===x[0],'rweeks',x[0]);}).join('')+'</div>'+
-    '<div class="lbl">Time you can give each day</div><div class="chips">'+[15,30,60].map(function(m){return chip(m+' min',f.mins===m,'rmins',m);}).join('')+'</div>'+
+  if(f.step==='questions'){
+    h+='<p class="sub">Your answers shape the plan. Tap an option or type your own. Skip any you like.</p>';
+    f.qs.forEach(function(q,i){
+      h+='<section class="card"><label class="lbl" for="qa'+i+'" style="margin-top:0">'+esc(q.q)+'</label>';
+      if(q.options&&q.options.length)h+='<div class="chips" style="margin-bottom:10px">'+q.options.map(function(o,j){return chip(esc(o),q.a===o,'qopt',j,' data-id="'+i+'"');}).join('')+'</div>';
+      h+='<input id="qa'+i+'" type="text" maxlength="240" placeholder="Or type your own answer" value="'+esc(q.a)+'"></section>';
+    });
+    if(f.err)h+='<p class="err" role="alert">'+esc(f.err)+'</p>';
+    h+='<button type="button" class="btn primary big" data-action="racebuild">Build my plan</button><button type="button" class="btn ghost" data-action="raceskipq">Skip the questions</button>';
+    return h;
+  }
+  var wk=[[4,'4 weeks'],[8,'8 weeks'],[12,'12 weeks'],[26,'6 months'],[52,'1 year'],[78,'18 months'],[104,'2 years']];
+  h+='<section class="card"><label class="lbl" for="rGoal">Your goal</label><input id="rGoal" type="text" maxlength="160" placeholder="e.g. Prepare for a Goldman Sachs interview" value="'+esc(f.goal)+'">'+
+    '<div class="lbl">Finish line</div><div class="chips">'+wk.map(function(x){return chip(x[1],f.weeks===x[0],'rweeks',x[0]);}).join('')+'</div>'+
+    '<div class="lbl">Time you can give each day</div><div class="chips">'+[15,30,60,90].map(function(m){return chip(m+' min',f.mins===m,'rmins',m);}).join('')+'</div>'+
     (f.err?'<p class="err" style="margin-top:12px" role="alert">'+esc(f.err)+'</p>':'')+
-    '<div style="margin-top:16px"><button type="button" class="btn primary big" data-action="racebuild">Build my race</button></div>'+
-    (ENT.pro?'<p class="note" style="margin-top:10px">The AI planner runs only when you tap the button. Only your goal text and dates are sent to it. If it is unavailable, a built-in plan is used.</p>':'<p class="note" style="margin-top:10px">Free plan: a built-in plan is used. <button type="button" class="btn ghost small" data-action="gopro" style="min-height:32px;padding:0 6px;color:var(--accent)">Pro writes one tailored to your goal with AI.</button></p>')+'</section>';
+    '<div style="margin-top:16px"><button type="button" class="btn primary big" data-action="racenext">Continue</button></div>'+
+    '<button type="button" class="btn ghost" data-action="racebasic" style="margin-top:6px">Use a basic plan instead (no AI)</button>'+
+    '<p class="note" style="margin-top:10px">Next you answer a few short questions about your situation, so the plan fits you. Only your goal, your answers and the dates are sent to the AI, and only when you tap Continue. '+(ENT.pro?'':'Your first plan is free. More are part of Pro.')+'</p></section>';
   return h;
 }
 function vRaceDetail(r){
   var st=raceStats(r);
-  var h='<button type="button" class="btn ghost small" data-action="raceback" style="align-self:flex-start">All races</button>'+
+  var h='<div class="row" style="justify-content:space-between"><button type="button" class="btn ghost small" data-action="raceback">All races</button><button type="button" class="btn small primary" data-action="racenew">New race</button></div>'+
     '<div class="head"><div class="eyebrow">'+(r.demo?'Example race':(r.ai?'Plan written by AI':'Built-in plan'))+'</div><h1 style="overflow-wrap:anywhere">'+esc(r.name)+'</h1><p class="sub">'+esc(leftText(r))+' · finish '+esc(fmtDate(r.due))+' · '+r.mins+' min a day</p></div>';
   if(r.note)h+='<p class="note">'+esc(r.note)+'</p>';
+  if(r.realism)h+='<section class="card"><div class="tag">Is this realistic?</div><p style="margin-top:6px">'+esc(r.realism)+'</p></section>';
   h+='<section class="card"><div class="wins-head" style="margin-bottom:0"><h2>Progress</h2><span class="tag">'+st.dn+' of '+st.tot+' steps</span></div><div class="track" role="img" aria-label="Race track with '+r.laps.length+' laps">';
   r.laps.forEach(function(l,i){
     var full=l.steps.every(function(s){return s.done;});
@@ -520,7 +538,7 @@ function vRaceDetail(r){
   h+='</div></section>';
   r.laps.forEach(function(l,i){
     var d=l.steps.filter(function(s){return s.done;}).length;
-    h+='<section class="card lap"><div class="laphead"><h2>Lap '+(i+1)+' · '+esc(l.title)+'</h2><span class="tag">by '+esc(fmtDate(l.due))+' · '+d+'/'+l.steps.length+'</span></div><ul class="list">';
+    h+='<section class="card lap"><div class="laphead"><h2>Lap '+(i+1)+' · '+esc(l.title)+'</h2><span class="tag">by '+esc(fmtDate(l.due))+' · '+d+'/'+l.steps.length+'</span></div>'+(l.focus?'<p class="sub" style="margin:4px 0 6px">'+esc(l.focus)+'</p>':'')+(l.rhythm?'<p class="note mono" style="margin:0 0 8px">Weekly rhythm: '+esc(l.rhythm)+'</p>':'')+'<ul class="list">';
     l.steps.forEach(function(s){
       var tk=s.taskId?taskById(s.taskId):null,inToday=tk&&!tk.done;
       h+='<li class="item'+(s.done?' dn':'')+'"><button type="button" class="check'+(s.done?' on':'')+'" data-action="stepToggle" data-r="'+r.id+'" data-s="'+s.id+'" aria-label="'+(s.done?'Undo step':'Mark step done')+': '+esc(s.text)+'"></button>'+
@@ -621,42 +639,78 @@ function templateLaps(mins){
 }
 function normalizeLaps(out,cap){
   if(!out||!Array.isArray(out.laps))return null;
-  var laps=out.laps.slice(0,6).map(function(l){
-    var steps=(l&&Array.isArray(l.steps)?l.steps:[]).slice(0,4).map(function(s){
+  var laps=out.laps.slice(0,12).map(function(l){
+    var steps=(l&&Array.isArray(l.steps)?l.steps:[]).slice(0,6).map(function(s){
       var m=Math.round(Number(s&&s.minutes));if(!(m>=2))m=10;
-      return {text:clip(s&&s.text,110),min:Math.min(m,cap)};
+      return {text:clip(s&&s.text,120),min:Math.min(m,cap)};
     }).filter(function(s){return s.text;});
-    return {title:clip(l&&l.title,40)||'Next lap',steps:steps};
+    var w=Math.round(Number(l&&l.weight));if(!(w>=1))w=1;if(w>10)w=10;
+    return {title:clip(l&&l.title,40)||'Next lap',focus:clip(l&&l.focus,170),rhythm:clip(l&&l.rhythm,170),weight:w,steps:steps};
   }).filter(function(l){return l.steps.length;});
-  return laps.length>=3?{name:clip(out.race_name,48),laps:laps}:null;
+  return laps.length>=3?{name:clip(out.race_name,48),realism:clip(out.realism,500),laps:laps}:null;
 }
-async function buildRace(){
-  var f=ui.raceForm,goal=clip(f.goal,120);
-  if(goal.length<3){f.err='Write your goal first. A few words is enough.';render();return;}
-  f.loading=true;f.err='';render();
-  var now=Date.now(),days=f.weeks*7,due=ymd(addDays(startOfDay(now),days)),cap=Math.max(f.mins,10);
-  var plan=null,note='',ai=false;
+function aiOn(){return !!(ENT.cfg.ai&&ENT.cfg.ai.ready);}
+function failNote(e){
+  var c=e&&e.code;
+  if(c==='pro_required')return 'Your free AI plan is used, so a basic plan was used. Pro writes unlimited personal plans.';
+  if(c==='daily_limit')return 'You reached today\u2019s AI planning limit, so a basic plan was used.';
+  return 'The AI planner was not available, so a basic plan was used.';
+}
+function planBody(f,extra){
+  var b={goal:clip(f.goal,160),weeks:f.weeks,mins:f.mins,stage:S.stage||'',today:ymd(Date.now())};
+  if(extra)for(var k in extra)b[k]=extra[k];
+  return b;
+}
+function needLogin(){var f=ui.raceForm;if(f)f.loading=false;ui.afterLogin='plan';ui.login=true;render();}
+async function nextStep(){
+  var f=ui.raceForm;if(!f)return;
+  if(clip(f.goal,160).length<3){f.err='Write your goal first. A few words is enough.';render();return;}
+  f.err='';
+  if(!aiOn()){buildRace(true,'The AI planner is not switched on yet, so a basic plan was used.');return;}
+  if(!ENT.signedIn){needLogin();return;}
+  f.loading='questions';render();
   var ctl=new AbortController();ui.abort=ctl;
-  if(!ENT.pro){
-    note='Built-in plan (free). Pro writes a plan tailored to your goal with AI.';
-  }else{
+  try{
+    var out=await api('/api/plan/questions',planBody(f),ctl.signal);
+    ui.abort=null;if(ui.raceForm!==f)return;
+    f.qs=(out.questions||[]).map(function(q){return {q:clip(q.q,140),options:(q.options||[]).map(function(o){return clip(o,40);}),a:''};});
+    if(f.qs.length<2)throw {code:'bad_shape'};
+    f.step='questions';f.loading=false;ui.reset=true;render();
+  }catch(e){
+    ui.abort=null;if(ui.raceForm!==f)return;
+    if(e&&e.name==='AbortError'){f.loading=false;render();return;}
+    if(e&&e.code==='login_required'){needLogin();return;}
+    buildRace(true,failNote(e));
+  }
+}
+async function buildRace(basic,note0){
+  var f=ui.raceForm,goal=clip(f.goal,160);
+  if(goal.length<3){f.err='Write your goal first. A few words is enough.';render();return;}
+  var due=ymd(addDays(startOfDay(Date.now()),f.weeks*7)),cap=Math.max(f.mins,10),plan=null,note=note0||'',ai=false;
+  if(!basic){
+    f.loading='plan';f.err='';render();
+    var ctl=new AbortController();ui.abort=ctl;
+    var ans=(f.qs||[]).filter(function(x){return x.a&&x.a.trim();}).map(function(x){return {q:x.q,a:clip(x.a,240)};});
     try{
-      var out=await api('/api/plan',{goal:goal,weeks:f.weeks,mins:f.mins,stage:S.stage||'',today:ymd(now)},ctl.signal);
+      var out=await api('/api/plan',planBody(f,{answers:ans}),ctl.signal);
       plan=normalizeLaps(out,cap);
       if(!plan)throw {code:'bad_shape'};
       ai=true;
     }catch(e){
-      if(e&&e.name==='AbortError'){ui.abort=null;f.loading=false;render();return;}
-      note=(e&&e.code==='daily_limit')?'You reached today\u2019s AI planning limit, so a built-in plan was used.':'The AI planner was not available, so a built-in plan was used.';
+      ui.abort=null;if(ui.raceForm!==f)return;
+      if(e&&e.name==='AbortError'){f.loading=false;render();return;}
+      if(e&&e.code==='login_required'){needLogin();return;}
+      note=failNote(e);
     }
   }
   ui.abort=null;
-  if(!ui.raceForm)return;
+  if(ui.raceForm!==f)return;
   var laps=plan?plan.laps:templateLaps(f.mins),name=(plan&&plan.name)||clip(goal,48);
-  var r=makeRace(goal,name,due,f.mins,laps,ai,false);r.note=note;
+  var r=makeRace(goal,name,due,f.mins,laps,ai,false);r.note=note;if(plan&&plan.realism)r.realism=plan.realism;
   S.races.unshift(r);save();
+  if(ai&&!ENT.pro)ENT.aiFree=false;
   ui.raceForm=null;ui.raceOpen=r.id;ui.reset=true;render();
-  toast(ai?'Your race is ready.':'Your race is ready (built-in plan).');
+  toast(ai?'Your plan is ready.':'Your race is ready (basic plan).');
 }
 
 /* ---------- events ---------- */
@@ -679,12 +733,16 @@ function act(a,d){
     case 'notyet':case 'dismiss':S.timer=null;save();render();break;
     case 'momentum':if(T&&T.taskId)startSprint(T.taskId,defLen());break;
     case 'unpark':S.parked=S.parked.filter(function(x){return x.id!==d.id;});save();render();break;
-    case 'racenew':if(!ENT.pro&&S.races.filter(function(r){return !r.demo;}).length>=1){ui.paywall='races';render();break;}ui.raceForm={goal:'',weeks:8,mins:30,loading:false,err:''};ui.reset=true;render();var g=$('#rGoal');if(g)g.focus();break;
+    case 'racenew':if(!ENT.pro&&S.races.filter(function(r){return !r.demo;}).length>=1){ui.paywall='races';render();break;}ui.raceOpen=null;ui.raceForm={goal:'',weeks:8,mins:30,loading:false,err:'',step:'goal',qs:[]};ui.reset=true;render();var g=$('#rGoal');if(g)g.focus();break;
     case 'raceback':if(ui.raceForm){if(!ui.raceForm.loading){ui.raceForm=null;render();}}else{ui.raceOpen=null;ui.confirmDel=false;ui.reset=true;render();}break;
     case 'raceopen':ui.raceOpen=d.id;ui.reset=true;render();break;
     case 'rweeks':ui.raceForm.weeks=Number(d.v);render();break;
     case 'rmins':ui.raceForm.mins=Number(d.v);render();break;
-    case 'racebuild':buildRace();break;
+    case 'racenext':nextStep();break;
+    case 'racebasic':buildRace(true,'Basic plan (no AI).');break;
+    case 'racebuild':buildRace(false);break;
+    case 'raceskipq':ui.raceForm.qs=[];buildRace(false);break;
+    case 'qopt':(function(){var q=ui.raceForm.qs[Number(d.id)];if(q){var o=q.options[Number(d.v)];q.a=(q.a===o?'':o);render();}})();break;
     case 'racecancel':if(ui.abort)ui.abort.abort();break;
     case 'stepToggle':{var f=findStep(d.r,d.s);if(!f)break;if(f.s.done){f.s.done=null;}else{f.s.done=Date.now();var tk=f.s.taskId?taskById(f.s.taskId):null;if(tk&&!tk.done)tk.done=f.s.done;}save();render();break;}
     case 'stepToday':{var g2=findStep(d.r,d.s);if(!g2)break;var nt={id:uid(),title:g2.s.text,step:suggestStep(g2.s.text),created:Date.now(),started:null,done:null};if(g2.r.demo)nt.demo=1;S.tasks.push(nt);g2.s.taskId=nt.id;save();render();toast('Added to Today.');break;}
@@ -730,6 +788,7 @@ document.addEventListener('input',function(e){
     if(!ui.draft.edited){var st=$('#tStep');var sg=el.value.trim()?suggestStep(el.value):'';if(st)st.value=sg;ui.draft.step=sg;}
   }else if(el.id==='tStep'){ui.draft.step=el.value;ui.draft.edited=true;}
   else if(el.id==='rGoal'&&ui.raceForm){ui.raceForm.goal=el.value;}
+  else if(/^qa\d+$/.test(el.id)&&ui.raceForm&&ui.raceForm.qs){var qi=ui.raceForm.qs[Number(el.id.slice(2))];if(qi)qi.a=el.value;}
   else if(el.id==='demoName'){ui.demoName=el.value;}
 });
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!ui.conflict){if(ui.login){ui.login=false;ui.afterLogin='';render();}else if(ui.paywall){ui.paywall=null;ui.payErr='';render();}}
