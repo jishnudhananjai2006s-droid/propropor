@@ -19,7 +19,7 @@ function fresh(){return {v:1,stage:null,tasks:[],sessions:[],parked:[],races:[],
 function load(){try{var r=localStorage.getItem(KEY);if(r){var o=JSON.parse(r);if(o&&o.v===1&&Array.isArray(o.tasks))return o;}}catch(e){}return null;}
 function save(nosync){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}if(!nosync)scheduleSync();}
 var S=load();
-var ui={ageErr:'',login:false,afterLogin:'',pendingPaid:'',loginErr:'',demoName:'',conflict:null,confirmDelAcct:false,paywall:null,busy:false,payErr:'',confirmCancel:false,tab:'today',len:null,focusTask:'',raceOpen:null,raceForm:null,confirmErase:false,confirmDel:false,draft:{title:'',step:'',edited:false},reset:false,abort:null,rv:{},gOpen:'',bErr:'',welcomeOff:''};
+var ui={ageErr:'',login:false,afterLogin:'',pendingPaid:'',loginErr:'',demoName:'',conflict:null,confirmDelAcct:false,paywall:null,busy:false,payErr:'',confirmCancel:false,tab:'today',len:null,focusTask:'',raceOpen:null,raceForm:null,confirmErase:false,confirmDel:false,draft:{title:'',step:'',when:'',edited:false},reset:false,abort:null,rv:{},gOpen:'',bErr:'',welcomeOff:''};
 
 /* ---------- plan and billing ---------- */
 var ENT={nextFreeAt:0,aiFree:false,pro:false,signedIn:false,uid:'',cfg:{provider:'demo',testMode:false,priceLabel:'',trialDays:0,auth:{mode:'demo',googleClientId:''},ai:{ready:false}}};
@@ -187,7 +187,7 @@ async function eraseAll(){
     catch(e){toast('Could not erase your account copy, so nothing was erased. Try again.');return;}
   }
   try{localStorage.removeItem(KEY);}catch(e){}
-  S=fresh();ui.tab='today';ui.raceOpen=null;ui.raceForm=null;ui.confirmErase=false;ui.draft={title:'',step:'',edited:false};ui.reset=true;
+  S=fresh();ui.tab='today';ui.raceOpen=null;ui.raceForm=null;ui.confirmErase=false;ui.draft={title:'',step:'',when:'',edited:false};ui.reset=true;
   save(true);render();toast(ENT.signedIn?'Erased from this device and your account.':'All data erased from this device.');
 }
 async function deleteAccount(){
@@ -421,12 +421,13 @@ function vToday(){
     '<input id="tTitle" type="text" maxlength="90" placeholder="'+esc(ph)+'" value="'+esc(ui.draft.title)+'">'+
     '<label class="lbl" for="tStep">First step, under 2 minutes</label>'+
     '<input id="tStep" type="text" maxlength="140" placeholder="Filled in for you. Change it if you like." value="'+esc(ui.draft.step)+'">'+
+    '<label class="lbl" for="tWhen">When and where will you start? (optional)</label><input id="tWhen" type="text" maxlength="80" placeholder="e.g. After dinner, at my desk" value="'+esc(ui.draft.when)+'">'+
     '<div style="margin-top:14px"><button class="btn primary big" type="submit">Add task</button></div></form>';
   h+='<section class="card"><div class="wins-head"><h2>Up next</h2><span class="tag">'+open.length+' open</span></div>';
   if(!open.length)h+='<p class="empty">Nothing here yet. Add the one thing you keep putting off.</p>';
   else h+='<ul class="list">'+open.map(function(t){
     return '<li class="item"><button type="button" class="check" data-action="toggle" data-id="'+t.id+'" aria-label="Mark done: '+esc(t.title)+'"></button>'+
-      '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="s">First step: '+esc(t.step)+'</div></div>'+
+      '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="s">First step: '+esc(t.step)+'</div>'+(t.when?'<div class="s mono">Plan: '+esc(t.when)+'</div>':'')+'</div>'+
       '<div class="acts"><button type="button" class="btn small primary" data-action="start2" data-id="'+t.id+'">Start 2 min</button>'+
       '<button type="button" class="btn small ghost" data-action="remove" data-id="'+t.id+'">Remove</button></div></li>';
   }).join('')+'</ul>';
@@ -845,6 +846,7 @@ document.addEventListener('input',function(e){
     ui.draft.title=el.value;
     if(!ui.draft.edited){var st=$('#tStep');var sg=el.value.trim()?suggestStep(el.value):'';if(st)st.value=sg;ui.draft.step=sg;}
   }else if(el.id==='tStep'){ui.draft.step=el.value;ui.draft.edited=true;}
+  else if(el.id==='tWhen'){ui.draft.when=el.value;}
   else if(el.id==='rGoal'&&ui.raceForm){ui.raceForm.goal=el.value;}
   else if(/^qa\d+$/.test(el.id)&&ui.raceForm&&ui.raceForm.qs){var qi=ui.raceForm.qs[Number(el.id.slice(2))];if(qi)qi.a=el.value;}
   else if(el.id==='evDate'&&ui.raceForm&&ui.raceForm.event){ui.raceForm.event.date=el.value;}
@@ -859,8 +861,8 @@ document.addEventListener('submit',function(e){
     var title=clip($('#tTitle').value,90);
     if(!title){toast('Write the task first.');$('#tTitle').focus();return;}
     var step=clip($('#tStep').value,140)||suggestStep(title);
-    S.tasks.push({id:uid(),title:title,step:step,created:Date.now(),started:null,done:null});
-    ui.draft={title:'',step:'',edited:false};save();render();toast('Added. Start with the first step: 2 minutes.');
+    S.tasks.push({id:uid(),title:title,step:step,when:clip($('#tWhen').value,80),created:Date.now(),started:null,done:null});
+    ui.draft={title:'',step:'',when:'',edited:false};save();render();toast('Added. Start with the first step: 2 minutes.');
   }else{
     var txt=clip($('#parkIn').value,120);if(!txt)return;
     S.parked.unshift({id:uid(),text:txt,ts:Date.now()});save();render();var p=$('#parkIn');if(p)p.focus();
@@ -925,7 +927,7 @@ function nextStepInfo(){
 }
 function nextStepText(){
   var n=nextStepInfo();if(n)return 'Lap '+(n.li+1)+': '+n.s.text+' ('+Math.min(n.s.min,10)+' min is enough to start)';
-  var o=openTasks()[0];return o?('Start with: '+o.step):'Add one thing you have been putting off.';
+  var o=openTasks()[0];return o?('Start with: '+o.step+(o.when?' ('+o.when+')':'')):'Add one thing you have been putting off.';
 }
 function restartNow(){
   var n=nextStepInfo(),t=null;
