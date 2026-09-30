@@ -389,6 +389,7 @@ function startSprint(taskId,len){
   S.timer={taskId:t?t.id:null,len:len,endAt:now+len*MIN,paused:false,remainMs:len*MIN,began:now,ended:false,sid:null};
   if(t&&!t.started)t.started=now;
   save();ui.tab='focus';ui.reset=true;render();buddyPing(true);
+  if(showTour()&&TOUR[ui.tourStep].id==='start')tourGo(tIdx('focus'));
 }
 function endSprint(){
   var T=S.timer;if(!T||T.ended)return;
@@ -439,6 +440,7 @@ function vToday(){
   var wins=S.tasks.filter(function(t){return t.done&&t.done>=sod;}).sort(function(a,b){return b.done-a.done;});
   var sess=S.sessions.filter(function(s){return s.start>=sod;});
   var mins=sess.reduce(function(a,s){return a+s.min;},0);
+  var tourTaskId=(open.find(function(t){return !t.demo;})||{}).id;
   var ph={school:'Revise Unit 4 notes',college:'Start the assignment',work:'Update my résumé'}[S.stage]||'Start the assignment';
   var h='<div class="head"><div class="eyebrow">Startline · '+esc(new Date().toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}))+'</div><h1>Today</h1></div>';
   if(!S.stage){
@@ -457,7 +459,7 @@ function vToday(){
   if(open.length)h+='<section class="card"><div class="wins-head"><h2>Up next</h2><span class="tag">'+open.length+' open</span></div><ul class="list">'+open.map(function(t){
     return '<li class="item"><button type="button" class="check" data-action="toggle" data-id="'+t.id+'" aria-label="Mark done: '+esc(t.title)+'"></button>'+
       '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="s">First step: '+esc(t.step)+'</div>'+(t.when?'<div class="s mono">Plan: '+esc(t.when)+'</div>':'')+'</div>'+
-      '<div class="acts">'+(t.min>2?'<button type="button" class="btn small primary" data-action="startt" data-id="'+t.id+'">Start '+taskLen(t)+' min</button><button type="button" class="btn small" data-action="start2" data-id="'+t.id+'">Just 2 min</button>':'<button type="button" class="btn small primary" data-action="start2" data-id="'+t.id+'">Start 2 min</button>')+
+      '<div class="acts">'+(t.min>2?'<button type="button" class="btn small primary"'+(tourTaskId===t.id?' data-tour="start"':'')+' data-action="startt" data-id="'+t.id+'">Start '+taskLen(t)+' min</button><button type="button" class="btn small" data-action="start2" data-id="'+t.id+'">Just 2 min</button>':'<button type="button" class="btn small primary"'+(tourTaskId===t.id?' data-tour="start"':'')+' data-action="start2" data-id="'+t.id+'">Start 2 min</button>')+
       '<button type="button" class="btn small ghost" data-action="remove" data-id="'+t.id+'">Remove</button></div></li>';
   }).join('')+'</ul>';
   if(open.length)h+='</section>';
@@ -697,6 +699,7 @@ function render(){
   var ov=$('#overlay');if(!ov){ov=document.createElement('div');ov.id='overlay';$('#app').appendChild(ov);}
   ov.innerHTML=ageState()!=='1'?vAge():ui.conflict?vConflict():(ui.login?vLogin():(ui.paywall?vPaywall():(showTour()?vTour():'')));
   if(ageState()==='1'&&ui.login&&!ui.conflict)mountAuth();
+  tourApply();
 }
 
 /* ---------- race building ---------- */
@@ -834,10 +837,10 @@ function act(a,d){
     case 'unpark':S.parked=S.parked.filter(function(x){return x.id!==d.id;});save();render();break;
     case 'racenew':if(!ENT.pro&&freeRaceWait()>0){ui.paywall='races';render();break;}ui.raceOpen=null;ui.raceForm={goal:'',weeks:8,mins:30,loading:false,err:'',step:'goal',qs:[]};ui.reset=true;render();var g=$('#rGoal');if(g)g.focus();break;
     case 'racenotify':try{Notification.requestPermission().then(function(p){ui.notify=(p==='granted');if(ui.raceForm&&ui.raceForm.loading)render();});}catch(e){}break;
-    case 'tour':ui.tourOn=true;ui.tourStep=0;render();break;
-    case 'tournext':ui.tourStep=Math.min(TOUR.length-1,ui.tourStep+1);render();break;
-    case 'tourback':ui.tourStep=Math.max(0,ui.tourStep-1);render();break;
-    case 'tourdone':lset('startline.tour','1');ui.tourOn=false;ui.tourStep=0;ui.reset=true;render();break;
+    case 'tour':ui.tourOn=true;tourGo(0);break;
+    case 'tournext':tourGo(ui.tourStep+1);break;
+    case 'tourback':tourGo(ui.tourStep-1);break;
+    case 'tourdone':lset('startline.tour','1');ui.tourOn=false;ui.tourStep=0;ui.tab='today';ui.crewOpen=false;ui.raceOpen=null;ui.reset=true;render();break;
     case 'crewopen':ui.crewOpen=true;ui.reset=true;render();buddyPing(false,true);break;
     case 'lapopen':ui.lapOpen[d.v]=true;render();break;
     case 'raceback':if(ui.crewOpen){ui.crewOpen=false;ui.reset=true;render();break;}if(ui.raceForm){if(!ui.raceForm.loading){ui.raceForm=null;render();}}else{ui.raceOpen=null;ui.confirmDel=false;ui.reset=true;render();}break;
@@ -936,6 +939,7 @@ document.addEventListener('submit',function(e){
     var step=clip($('#tStep').value,140)||suggestStep(title);
     S.tasks.push({id:uid(),title:title,step:step,when:clip($('#tWhen').value,80),created:Date.now(),started:null,done:null});
     ui.draft={title:'',step:'',when:'',edited:false};save();render();toast('Added. Start with the first step: 2 minutes.');
+    if(showTour()&&TOUR[ui.tourStep].wait==='task')tourGo(tIdx('start'));
   }else{
     var txt=clip($('#parkIn').value,120);if(!txt)return;
     S.parked.unshift({id:uid(),text:txt,ts:Date.now()});save();render();var p=$('#parkIn');if(p)p.focus();
@@ -1245,22 +1249,42 @@ async function buddyJoin(create){
   ui.reset=false;render();
 }
 
-/* ---------- walkthrough ---------- */
+/* ---------- walkthrough: a guided tour that visits each section ---------- */
 var TOUR=[
- {t:'Welcome to Startline',b:'Startline helps you begin the things you keep putting off. No guilt, and no big system to maintain. This tour takes one minute.'},
- {t:'Today: just begin',b:'Add one thing you have been putting off. We suggest a tiny first step. Tap Start 2 min and begin.',tip:'Two minutes is enough to get past the hardest part, which is starting.'},
- {t:'Focus: short sprints',b:'For longer work, pick a task and a length: 15, 25 or 45 minutes. When it ends, tell us how focused you felt.',tip:'A distracting thought? Park it on the list so it can wait.'},
- {t:'Race: big goals, real dates',b:'For a bigger goal like an exam, an interview or a fitness target, type it and answer a few questions. You get a plan made for you, up to 2 years long. For dated goals like CAT, we look up the real date.',tip:'The route map shows how close you are. If you fall behind, one tap re-plans your dates.'},
- {t:'Report: see that it works',b:'After two weeks you can see how much sooner you start compared with your first week. Your streak forgives one missed day a week, and you can pause your plans any time.'},
- {t:'Friends and reminders',b:'Start a crew with friends to share one goal. It is locked once created, and everyone ticks off their own steps. Turn on a daily nudge in Report, then Settings.',tip:'You can replay this tour from Report, then Settings.'}
+ {id:'hi',t:'Welcome to Startline',b:'Startline helps you begin the things you keep putting off. No guilt, and no big system to maintain. This quick tour walks you through each screen, and you will add your first task on the way.',tab:'today'},
+ {id:'add',t:'Add one thing you keep putting off',b:'Type it in the highlighted box, then tap Add task. It can be anything: an assignment, an email, a workout.',tip:'Optional details are tucked away so this stays simple.',tab:'today',sel:'#tTitle',wait:'task'},
+ {id:'start',t:'Now, just begin',b:'This is your task. Tap Start 2 min to begin. You do not have to finish it, only start.',tip:'Two minutes is enough to get past the hardest part.',tab:'today',sel:'[data-tour="start"]',needs:'task'},
+ {id:'focus',t:'Focus: timed sprints',b:'Pick a task and a length here. Your timer follows your work style, like Pomodoro, and you get a break when a sprint ends.',tab:'focus',sel:'#fTask,#clock'},
+ {id:'race',t:'Race: big goals, real dates',b:'For a bigger goal like an exam, an interview or a fitness target, tap New race. Answer a few questions and get a plan made for you, up to 2 years long. For dated goals like CAT, it looks up the real date.',tip:'The route map shows how close you are. If you fall behind, one tap re-plans your dates.',tab:'race',sel:'[data-action="racenew"]'},
+ {id:'crew',t:'Crew: goals with friends',b:'Start a crew to share one goal with friends. It is locked once created, and everyone ticks off their own steps.',tab:'race',sel:'[data-action="crewopen"]'},
+ {id:'report',t:'Report: see that it works',b:'After two weeks you can see how much sooner you start compared with your first week. Your streak forgives one missed day a week. Pause, daily nudges and this tour live under Settings.',tab:'report',sel:'.hero'},
+ {id:'done',t:'You are ready',b:'That is everything. Start with one small thing today.',tab:'today'}
 ];
+function tIdx(id){for(var i=0;i<TOUR.length;i++)if(TOUR[i].id===id)return i;return -1;}
 function showTour(){return ui.tourOn===true||(ui.tourOn!==false&&lget('startline.tour')!=='1');}
+function hasOwnTask(){return S.tasks.some(function(t){return !t.demo&&!t.done;});}
+function tourGo(n){
+  var dir=n>=ui.tourStep?1:-1;
+  while(n>=0&&n<TOUR.length&&TOUR[n].needs==='task'&&!hasOwnTask())n+=dir;
+  n=Math.max(0,Math.min(TOUR.length-1,n));
+  ui.tourStep=n;var st=TOUR[n];
+  if(st.tab&&ui.tab!==st.tab){ui.tab=st.tab;}
+  ui.crewOpen=false;ui.raceOpen=null;ui.raceForm=null;ui.reset=true;render();
+}
+function tourApply(){
+  var old=document.querySelectorAll('.tour-hl');for(var i=0;i<old.length;i++)old[i].classList.remove('tour-hl');
+  if(!showTour())return;
+  var st=TOUR[ui.tourStep];if(!st||!st.sel)return;
+  var el=$(st.sel);if(!el)return;
+  el.classList.add('tour-hl');
+  try{var scr=$('#screen');if(scr&&el.getBoundingClientRect){var r=el.getBoundingClientRect(),sr=scr.getBoundingClientRect();if(r.top<sr.top+10||r.bottom>sr.bottom-230)scr.scrollTop+=r.top-sr.top-80;}}catch(e){}
+}
 function vTour(){
-  var n=Math.min(ui.tourStep,TOUR.length-1),st=TOUR[n],last=n===TOUR.length-1;
-  return '<div class="sheet-back"><div class="sheet tour" role="dialog" aria-modal="true" aria-label="How Startline works"><div class="dots" aria-hidden="true">'+TOUR.map(function(x,i){return '<i'+(i===n?' class="on"':'')+'></i>';}).join('')+'</div>'+
-    '<div class="eyebrow">Step '+(n+1)+' of '+TOUR.length+'</div><h2 style="font-size:24px">'+esc(st.t)+'</h2><p>'+esc(st.b)+'</p>'+(st.tip?'<p class="note">'+esc(st.tip)+'</p>':'')+
-    '<div class="row">'+(n?'<button type="button" class="btn" data-action="tourback">Back</button>':'')+'<button type="button" class="btn primary" style="flex:1" data-action="'+(last?'tourdone':'tournext')+'">'+(last?'Start using Startline':'Next')+'</button></div>'+
-    (last?'':'<button type="button" class="btn ghost small" data-action="tourdone" style="align-self:center">Skip the tour</button>')+'</div></div>';
+  var n=Math.min(ui.tourStep,TOUR.length-1),st=TOUR[n],last=n===TOUR.length-1,waiting=st.wait==='task'&&!hasOwnTask();
+  return '<div class="tour-wrap"><div class="tourcard" role="dialog" aria-label="How Startline works"><div class="dots" aria-hidden="true">'+TOUR.map(function(x,i){return '<i'+(i===n?' class="on"':'')+'></i>';}).join('')+'</div>'+
+    '<div class="eyebrow">Step '+(n+1)+' of '+TOUR.length+'</div><h2 style="font-size:20px">'+esc(st.t)+'</h2><p>'+esc(st.b)+'</p>'+(st.tip?'<p class="note">'+esc(st.tip)+'</p>':'')+
+    '<div class="row">'+(n?'<button type="button" class="btn small" data-action="tourback">Back</button>':'')+'<button type="button" class="btn small primary" style="flex:1" data-action="'+(last?'tourdone':'tournext')+'">'+(last?'Start using Startline':(waiting?'Skip this step':'Next'))+'</button></div>'+
+    (last?'':'<button type="button" class="btn ghost small" data-action="tourdone" style="align-self:center;min-height:32px">Skip the tour</button>')+'</div></div>';
 }
 
 /* ---------- start ---------- */

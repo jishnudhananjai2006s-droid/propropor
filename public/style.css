@@ -167,5 +167,9 @@ form .fold summary::after{content:"+";margin-left:2px}
 .dots{display:flex;gap:8px}
 .dots i{width:8px;height:8px;border-radius:50%;background:var(--track)}
 .dots i.on{background:var(--accent);width:22px;border-radius:4px}
-.tour p{line-height:1.6}
 .lapsum{flex-direction:row;justify-content:space-between;align-items:center}
+
+.tour-wrap{position:absolute;inset:0;z-index:9;display:flex;align-items:flex-end;padding:0 12px 70px;pointer-events:none}
+.tourcard{pointer-events:auto;width:100%;background:var(--surface);border:1px solid var(--ink);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+.tourcard p{line-height:1.5}
+.tour-hl{box-shadow:0 0 0 4px var(--bg),0 0 0 7px var(--accent)!important;border-radius:10px;position:relative;z-index:2}
