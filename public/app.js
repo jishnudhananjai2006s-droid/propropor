@@ -699,6 +699,7 @@ function render(){
   var ov=$('#overlay');if(!ov){ov=document.createElement('div');ov.id='overlay';$('#app').appendChild(ov);}
   ov.innerHTML=ageState()!=='1'?vAge():ui.conflict?vConflict():(ui.login?vLogin():(ui.paywall?vPaywall():(showTour()?vTour():'')));
   if(ageState()==='1'&&ui.login&&!ui.conflict)mountAuth();
+  var ap=$('#app');if(ap)ap.classList.toggle('touring',showTour()&&ageState()==='1'&&!ui.login&&!ui.paywall&&!ui.conflict);
   tourApply();
 }
 
@@ -1277,7 +1278,7 @@ function tourApply(){
   var st=TOUR[ui.tourStep];if(!st||!st.sel)return;
   var el=$(st.sel);if(!el)return;
   el.classList.add('tour-hl');
-  try{var scr=$('#screen');if(scr&&el.getBoundingClientRect){var r=el.getBoundingClientRect(),sr=scr.getBoundingClientRect();if(r.top<sr.top+10||r.bottom>sr.bottom-230)scr.scrollTop+=r.top-sr.top-80;}}catch(e){}
+  try{var scr=$('#screen'),card=$('.tourcard');if(scr&&card&&el.getBoundingClientRect){var r=el.getBoundingClientRect(),sr=scr.getBoundingClientRect(),lim=card.getBoundingClientRect().top-12;if(r.top<sr.top+10||r.bottom>lim)scr.scrollTop+=r.top-sr.top-80;}}catch(e){}
 }
 function vTour(){
   var n=Math.min(ui.tourStep,TOUR.length-1),st=TOUR[n],last=n===TOUR.length-1,waiting=st.wait==='task'&&!hasOwnTask();
