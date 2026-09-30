@@ -15,11 +15,11 @@ function fmtClock(ms){var s=Math.max(0,Math.ceil(ms/1000));return String(Math.fl
 function clip(v,n){return String(v==null?'':v).replace(/\s+/g,' ').trim().slice(0,n);}
 
 /* ---------- state (stays on this device) ---------- */
-function fresh(){return {v:1,stage:null,tasks:[],sessions:[],parked:[],races:[],timer:null,demo:false};}
+function fresh(){return {v:1,stage:null,tasks:[],sessions:[],parked:[],races:[],timer:null,demo:false,pause:null,pauses:[],seen:{},remind:null};}
 function load(){try{var r=localStorage.getItem(KEY);if(r){var o=JSON.parse(r);if(o&&o.v===1&&Array.isArray(o.tasks))return o;}}catch(e){}return null;}
 function save(nosync){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}if(!nosync)scheduleSync();}
 var S=load();
-var ui={ageErr:'',login:false,afterLogin:'',pendingPaid:'',loginErr:'',demoName:'',conflict:null,confirmDelAcct:false,paywall:null,busy:false,payErr:'',confirmCancel:false,tab:'today',len:null,focusTask:'',raceOpen:null,raceForm:null,confirmErase:false,confirmDel:false,draft:{title:'',step:'',edited:false},reset:false,abort:null};
+var ui={ageErr:'',login:false,afterLogin:'',pendingPaid:'',loginErr:'',demoName:'',conflict:null,confirmDelAcct:false,paywall:null,busy:false,payErr:'',confirmCancel:false,tab:'today',len:null,focusTask:'',raceOpen:null,raceForm:null,confirmErase:false,confirmDel:false,draft:{title:'',step:'',edited:false},reset:false,abort:null,rv:{},gOpen:'',bErr:'',welcomeOff:''};
 
 /* ---------- plan and billing ---------- */
 var ENT={nextFreeAt:0,aiFree:false,pro:false,signedIn:false,uid:'',cfg:{provider:'demo',testMode:false,priceLabel:'',trialDays:0,auth:{mode:'demo',googleClientId:''},ai:{ready:false}}};
@@ -97,14 +97,14 @@ function getMeta(){try{return JSON.parse(localStorage.getItem(SYNCKEY)||'null')|
 function setMeta(m){try{localStorage.setItem(SYNCKEY,JSON.stringify(m));}catch(e){}}
 function exportState(){
   var nd=function(x){return !x.demo;};
-  return {v:1,stage:S.stage,tasks:S.tasks.filter(nd),sessions:S.sessions.filter(nd),parked:S.parked,races:S.races.filter(nd)};
+  return {v:1,stage:S.stage,tasks:S.tasks.filter(nd),sessions:S.sessions.filter(nd),parked:S.parked,races:S.races.filter(nd),pause:S.pause||null,pauses:S.pauses||[]};
 }
 function hasReal(st){return st.tasks.length>0||st.sessions.length>0||st.races.length>0||st.parked.length>0;}
 function adopt(st){
   S.stage=st.stage||S.stage;
   S.tasks=Array.isArray(st.tasks)?st.tasks:[];S.sessions=Array.isArray(st.sessions)?st.sessions:[];
   S.parked=Array.isArray(st.parked)?st.parked:[];S.races=Array.isArray(st.races)?st.races:[];
-  S.demo=false;S.timer=null;ui.focusTask='';ui.raceOpen=null;save(true);
+  S.pause=st.pause&&st.pause.since?{since:Number(st.pause.since)}:null;S.pauses=Array.isArray(st.pauses)?st.pauses:[];S.demo=false;S.timer=null;ui.focusTask='';ui.raceOpen=null;save(true);
 }
 function scheduleSync(){
   if(!ENT.signedIn||ui.conflict||getMeta().uid!==ENT.uid)return;
@@ -348,19 +348,20 @@ function makeRace(goal,name,due,mins,laps,ai,demo){
   var tw=laps.reduce(function(a,l){return a+(l.weight||1);},0),cum=0;
   var r={id:uid(),goal:goal,name:name,due:due,mins:mins,created:Date.now(),ai:!!ai,note:'',laps:laps.map(function(l){
     cum+=(l.weight||1);
-    return {id:uid(),title:l.title,focus:l.focus||'',rhythm:l.rhythm||'',due:ymd(start+(end-start)*cum/tw),steps:l.steps.map(function(s){return {id:uid(),text:s.text,min:s.min,done:s.done||null,taskId:null};})};
+    return {id:uid(),title:l.title,focus:l.focus||'',rhythm:l.rhythm||'',milestone:l.milestone||'',w:l.weight||1,due:ymd(start+(end-start)*cum/tw),steps:l.steps.map(function(s){return {id:uid(),text:s.text,min:s.min,done:s.done||null,taskId:null};})};
   })};
   if(demo)r.demo=1;
   return r;
 }
 if(!S){S=fresh();seedDemo();save();}
+S.pauses=Array.isArray(S.pauses)?S.pauses:[];S.seen=S.seen||{};if(S.pause===undefined)S.pause=null;
 
 /* ---------- timer ---------- */
 function startSprint(taskId,len){
   var now=Date.now(),t=taskId?taskById(taskId):null;
   S.timer={taskId:t?t.id:null,len:len,endAt:now+len*MIN,paused:false,remainMs:len*MIN,began:now,ended:false,sid:null};
   if(t&&!t.started)t.started=now;
-  save();ui.tab='focus';ui.reset=true;render();
+  save();ui.tab='focus';ui.reset=true;render();buddyPing(true);
 }
 function endSprint(){
   var T=S.timer;if(!T||T.ended)return;
@@ -368,7 +369,7 @@ function endSprint(){
   var el=T.len*MIN-remain;
   if(el<30000){S.timer=null;save();render();return;}
   var s={id:uid(),taskId:T.taskId,start:T.began,min:Math.max(1,Math.round(el/MIN)),feel:null};
-  S.sessions.push(s);T.ended=true;T.sid=s.id;save();render();
+  S.sessions.push(s);T.ended=true;T.sid=s.id;save();render();buddyPing(true);
 }
 function tick(){
   var T=S.timer;if(!T||T.ended||T.paused)return;
@@ -383,7 +384,7 @@ document.addEventListener('visibilitychange',tick);
 /* ---------- task actions ---------- */
 function completeTask(id){
   var t=taskById(id);if(!t||t.done)return;
-  t.done=Date.now();
+  t.done=Date.now();buddyPing(true);
   S.races.forEach(function(r){r.laps.forEach(function(l){l.steps.forEach(function(s){if(s.taskId===id&&!s.done)s.done=t.done;});});});
   save();
 }
@@ -415,6 +416,7 @@ function vToday(){
     h+='<section class="card"><h2>One quick question</h2><p class="sub" style="margin:6px 0 12px">What are you working towards? It sets your default sprint length.</p><div class="chips">'+
       chip('Exam prep',false,'stage','school')+chip('College',false,'stage','college')+chip('Job or internship',false,'stage','work')+'</div></section>';
   }
+  h+=todayExtras();
   h+='<form class="card" data-form="add" autocomplete="off"><label class="lbl" for="tTitle">What have you been putting off?</label>'+
     '<input id="tTitle" type="text" maxlength="90" placeholder="'+esc(ph)+'" value="'+esc(ui.draft.title)+'">'+
     '<label class="lbl" for="tStep">First step, under 2 minutes</label>'+
@@ -435,7 +437,7 @@ function vToday(){
     return '<li class="item dn"><button type="button" class="check on" data-action="toggle" data-id="'+t.id+'" aria-label="Undo: '+esc(t.title)+'"></button>'+
       '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="s mono">'+new Date(t.done).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})+'</div></div></li>';
   }).join('')+'</ul>';
-  return h+'</section>';
+  return h+'</section>'+pauseBtn();
 }
 function parkCard(){
   return '<section class="card"><h2>Parking lot</h2><p class="sub" style="margin:4px 0 12px;font-size:13px">A thought pops up? Park it here and get back to work.</p>'+
@@ -502,6 +504,7 @@ function vRaceList(){
     h+='<button type="button" class="card racecard" data-action="raceopen" data-id="'+r.id+'"><div><div class="tag">'+(r.demo?'Example · ':'')+esc(leftText(r))+'</div><h2 style="margin-top:4px;overflow-wrap:anywhere">'+esc(r.name)+'</h2></div>'+
       '<div class="bar"><i style="width:'+(st.tot?Math.round(st.dn/st.tot*100):0)+'%"></i></div><div class="note mono">'+st.dn+' of '+st.tot+' steps · finish '+esc(fmtDate(r.due))+'</div></button>';
   });
+  h+=pauseBtn()+vBuddy();
   return h;
 }
 var THINK=['Reading your goal','Caramelizing onions','Triangulating your deadline','Untangling your calendar','Sharpening pencils','Weighing the hard weeks','Charting the laps','Pacing the marathon','Balancing the rhythm','Whisking in your answers','Stress-testing the schedule','Polishing the finish line','Consulting the compass','Folding in rest days','Calibrating realism'],thkI=0;
@@ -522,12 +525,13 @@ function vRaceForm(){
       if(q.options&&q.options.length)h+='<div class="chips" style="margin-bottom:10px">'+q.options.map(function(o,j){return chip(esc(o),q.a===o,'qopt',j,' data-id="'+i+'"');}).join('')+'</div>';
       h+='<input id="qa'+i+'" type="text" maxlength="240" placeholder="Or type your own answer" value="'+esc(q.a)+'"></section>';
     });
+    if(f.event)h+='<section class="card"><div class="tag">Real date found</div><h2 style="margin-top:6px">'+esc(f.event.name)+'</h2><p class="sub" style="margin:6px 0 10px">'+esc(fmtDateY(f.event.date))+' · '+Math.ceil((parseYmd(f.event.date)-startOfDay(Date.now()))/DAY)+' days from today.'+(f.event.note?' '+esc(f.event.note)+'.':'')+' '+(f.event.source?'Source: '+esc(f.event.source)+'. ':'')+'Always confirm on the official site.</p><div class="chips">'+chip('Plan to this date',f.useEvent,'evon',1)+chip('Use my own timeline',!f.useEvent,'evon',0)+'</div>'+(f.useEvent?'<label class="lbl" for="evDate">Wrong date? Change it</label><input id="evDate" type="date" value="'+esc(f.event.date)+'" style="max-width:190px">':'')+'</section>';
     if(f.err)h+='<p class="err" role="alert">'+esc(f.err)+'</p>';
     h+='<button type="button" class="btn primary big" data-action="racebuild">Build my plan</button><button type="button" class="btn ghost" data-action="raceskipq">Skip the questions</button><button type="button" class="btn ghost" data-action="racebasic">Use a basic plan instead (no AI)</button>';
     return h;
   }
   var wk=[[4,'4 weeks'],[8,'8 weeks'],[12,'12 weeks'],[26,'6 months'],[52,'1 year'],[78,'18 months'],[104,'2 years']];
-  h+='<section class="card"><label class="lbl" for="rGoal">Your goal</label><input id="rGoal" type="text" maxlength="160" placeholder="e.g. Prepare for a Goldman Sachs interview" value="'+esc(f.goal)+'">'+
+  h+='<section class="card"><div class="lbl" style="margin-top:0">Quick starts</div><div class="chips" style="margin-bottom:6px">'+TPL.map(function(x,i){return chip(esc(x[0]),false,'rtpl',i);}).join('')+'</div><label class="lbl" for="rGoal">Your goal</label><input id="rGoal" type="text" maxlength="160" placeholder="e.g. Prepare for a Goldman Sachs interview" value="'+esc(f.goal)+'">'+
     '<div class="lbl">Finish line</div><div class="chips">'+wk.map(function(x){return chip(x[1],f.weeks===x[0],'rweeks',x[0]);}).join('')+'</div>'+
     '<div class="lbl">Time you can give each day</div><div class="chips">'+[15,30,60,90].map(function(m){return chip(m+' min',f.mins===m,'rmins',m);}).join('')+'</div>'+
     (f.err?'<p class="err" style="margin-top:12px" role="alert">'+esc(f.err)+'</p>':'')+
@@ -542,6 +546,7 @@ function vRaceDetail(r){
     '<div class="head"><div class="eyebrow">'+(r.demo?'Example race':(r.ai?'Plan written by AI':'Built-in plan'))+'</div><h1 style="overflow-wrap:anywhere">'+esc(r.name)+'</h1><p class="sub">'+esc(leftText(r))+' · finish '+esc(fmtDate(r.due))+' · '+r.mins+' min a day</p></div>';
   if(r.note)h+='<p class="note">'+esc(r.note)+'</p>';
   if(r.realism)h+='<section class="card"><div class="tag">Is this realistic?</div><p style="margin-top:6px">'+esc(r.realism)+'</p></section>';
+  h+=vRoute(r);
   h+='<section class="card"><div class="wins-head" style="margin-bottom:0"><h2>Progress</h2><span class="tag">'+st.dn+' of '+st.tot+' steps</span></div><div class="track" role="img" aria-label="Race track with '+r.laps.length+' laps">';
   r.laps.forEach(function(l,i){
     var full=l.steps.every(function(s){return s.done;});
@@ -557,8 +562,9 @@ function vRaceDetail(r){
         '<div class="body"><div class="t">'+esc(s.text)+'</div><div class="s mono">'+s.min+' min</div></div>'+
         (s.done?'':'<div class="acts">'+(inToday?'<span class="tag">In Today</span>':'<button type="button" class="btn small" data-action="stepToday" data-r="'+r.id+'" data-s="'+s.id+'">Add to Today</button>')+'</div>')+'</li>';
     });
-    h+='</ul></section>';
+    h+='</ul>'+lapTools(r,l,i,st)+'</section>';
   });
+  h+=dueTool(r);
   h+=ui.confirmDel?'<div class="row"><span class="note">Delete this race?</span><button type="button" class="btn small primary" data-action="racedelyes" data-id="'+r.id+'">Yes, delete</button><button type="button" class="btn small" data-action="racedelno">Keep it</button></div>':'<button type="button" class="btn ghost small" data-action="racedel" style="align-self:flex-start">Delete this race</button>';
   return h;
 }
@@ -582,9 +588,15 @@ function stats(){
   var s7=S.sessions.filter(function(s){return s.start>=now-WEEK;});
   o.focus=s7.reduce(function(a,s){return a+s.min;},0);
   var fs=s7.filter(function(s){return s.feel;});o.feel=avg(fs.map(function(s){return s.feel;}));
-  var days={};S.tasks.forEach(function(t){if(t.done)days[startOfDay(t.done)]=1;});
-  var d=startOfDay(now);if(!days[d])d=addDays(d,-1);
-  var streak=0;while(days[d]){streak++;d=addDays(d,-1);}o.streak=streak;
+  var days={},firstDone=Infinity;S.tasks.forEach(function(t){if(t.done){var k=startOfDay(t.done);days[k]=1;if(k<firstDone)firstDone=k;}});
+  var d=startOfDay(now),streak=0,forgiven=-99;if(!days[d])d=addDays(d,-1);
+  for(var i=0;i<400&&d>=firstDone;i++,d=addDays(d,-1)){
+    if(days[d]){streak++;continue;}
+    if(inPause(d))continue;
+    if(i-forgiven>=7){forgiven=i;continue;}
+    break;
+  }
+  o.streak=streak;
   return o;
 }
 function vReport(){
@@ -620,7 +632,7 @@ function vReport(){
     '<div class="metric"><div class="k">Felt focus<span class="n">Your own rating, last 7 days</span></div><div class="val">'+(o.feel==null?'–':o.feel.toFixed(1)+' / 5')+'</div></div></section>';
   h+='<section class="card"><h2>Your settings</h2>'+accountRow()+planRow()+'<div class="lbl">What you are working towards</div><div class="chips">'+
     chip('Exam prep',S.stage==='school','stage','school')+chip('College',S.stage==='college','stage','college')+chip('Job or internship',S.stage==='work','stage','work')+'</div>'+
-    '<p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
+    remindRow()+'<p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
     '<div style="margin-top:12px">'+(ui.confirmErase?'<div class="row"><span class="note">'+(ENT.signedIn?'Erase your progress here and in your account?':'Erase everything on this device?')+'</span><button type="button" class="btn small primary" data-action="eraseyes">Yes, erase</button><button type="button" class="btn small" data-action="eraseno">Keep it</button></div>':'<button type="button" class="btn small" data-action="erase">Erase all my data</button>')+'</div>'+deleteAcctRow()+'</section>';
   return h;
 }
@@ -657,7 +669,7 @@ function normalizeLaps(out,cap){
       return {text:clip(s&&s.text,120),min:Math.min(m,cap)};
     }).filter(function(s){return s.text;});
     var w=Math.round(Number(l&&l.weight));if(!(w>=1))w=1;if(w>10)w=10;
-    return {title:clip(l&&l.title,40)||'Next lap',focus:clip(l&&l.focus,170),rhythm:clip(l&&l.rhythm,170),weight:w,steps:steps};
+    return {title:clip(l&&l.title,40)||'Next lap',focus:clip(l&&l.focus,170),rhythm:clip(l&&l.rhythm,170),milestone:clip(l&&l.milestone,60),weight:w,steps:steps};
   }).filter(function(l){return l.steps.length;});
   return laps.length>=3?{name:clip(out.race_name,48),realism:clip(out.realism,500),laps:laps}:null;
 }
@@ -673,9 +685,11 @@ function keepBasic(e){var c=e&&e.code;return c==='free_cooldown'||c==='pro_requi
 function failStay(f){f.loading=false;f.err='The AI planner is busy right now, so nothing was saved. Please try again in a minute, or choose a basic plan.';ui.reset=false;render();}
 function planBody(f,extra){
   var b={goal:clip(f.goal,160),weeks:f.weeks,mins:f.mins,stage:S.stage||'',today:ymd(Date.now())};
+  if(f.event&&f.useEvent&&evOk(f.event))b.event={name:f.event.name,date:f.event.date,source:f.event.source||'',note:f.event.note||''};
   if(extra)for(var k in extra)b[k]=extra[k];
   return b;
 }
+function evOk(e){return !!(e&&/^\d{4}-\d{2}-\d{2}$/.test(String(e.date))&&parseYmd(e.date)>=addDays(startOfDay(Date.now()),14)&&parseYmd(e.date)<=addDays(startOfDay(Date.now()),730));}
 function needLogin(){var f=ui.raceForm;if(f)f.loading=false;ui.afterLogin='plan';ui.login=true;render();}
 async function nextStep(){
   var f=ui.raceForm;if(!f)return;
@@ -690,7 +704,7 @@ async function nextStep(){
     ui.abort=null;if(ui.raceForm!==f)return;
     f.qs=(out.questions||[]).map(function(q){return {q:clip(q.q,140),options:(q.options||[]).map(function(o){return clip(o,40);}),a:''};});
     if(f.qs.length<2)throw {code:'bad_shape'};
-    f.step='questions';f.loading=false;ui.reset=true;render();pingDone('Your questions are ready.',1);
+    f.event=out.event&&evOk(out.event)?out.event:null;f.useEvent=!!f.event;f.step='questions';f.loading=false;ui.reset=true;render();pingDone('Your questions are ready.',1);
   }catch(e){
     ui.abort=null;if(ui.raceForm!==f)return;
     if(e&&e.name==='AbortError'){f.loading=false;render();return;}
@@ -702,7 +716,7 @@ async function nextStep(){
 async function buildRace(basic,note0){
   var f=ui.raceForm,goal=clip(f.goal,160);
   if(goal.length<3){f.err='Write your goal first. A few words is enough.';render();return;}
-  var due=ymd(addDays(startOfDay(Date.now()),f.weeks*7)),cap=Math.max(f.mins,10),plan=null,note=note0||'',ai=false;
+  var useEv=!!(f.event&&f.useEvent&&evOk(f.event)),due=useEv?f.event.date:ymd(addDays(startOfDay(Date.now()),f.weeks*7)),cap=Math.max(f.mins,10),plan=null,note=note0||'',ai=false;
   if(!basic){
     f.loading='plan';f.err='';render();
     var ctl=new AbortController();ui.abort=ctl;
@@ -723,7 +737,7 @@ async function buildRace(basic,note0){
   ui.abort=null;
   if(ui.raceForm!==f)return;
   var laps=plan?plan.laps:templateLaps(f.mins),name=(plan&&plan.name)||clip(goal,48);
-  var r=makeRace(goal,name,due,f.mins,laps,ai,false);r.note=note;if(plan&&plan.realism)r.realism=plan.realism;
+  var r=makeRace(goal,name,due,f.mins,laps,ai,false);r.note=note;if(plan&&plan.realism)r.realism=plan.realism;if(useEv)r.event={name:clip(f.event.name,60),date:f.event.date,source:clip(f.event.source,60),note:clip(f.event.note,100)};
   S.races.unshift(r);save();
   if(ai&&!ENT.pro)ENT.aiFree=false;
   ui.raceForm=null;ui.raceOpen=r.id;ui.reset=true;render();pingDone('Your plan is ready.');
@@ -734,7 +748,7 @@ async function buildRace(basic,note0){
 function act(a,d){
   var T=S.timer;
   switch(a){
-    case 'tab':ui.tab=d.v;ui.reset=true;ui.confirmErase=false;ui.confirmDel=false;render();break;
+    case 'tab':ui.tab=d.v;ui.reset=true;ui.confirmErase=false;ui.confirmDel=false;render();if(d.v==='race')buddyPing(false,true);break;
     case 'stage':S.stage=d.v;save();render();break;
     case 'toggle':{var t=taskById(d.id);if(!t)break;if(t.done){t.done=null;save();render();}else{completeTask(d.id);render();toast(WINS[Math.floor(Math.random()*WINS.length)]);}break;}
     case 'start2':startSprint(d.id,2);break;
@@ -767,6 +781,32 @@ function act(a,d){
     case 'racedel':ui.confirmDel=true;render();break;
     case 'racedelno':ui.confirmDel=false;render();break;
     case 'racedelyes':S.races=S.races.filter(function(x){return x.id!==d.id;});ui.raceOpen=null;ui.confirmDel=false;ui.reset=true;save();render();break;
+    case 'pauseplan':pauseNow();break;
+    case 'resumeplan':resumeNow();break;
+    case 'restart':restartNow();break;
+    case 'welcomeoff':ui.welcomeOff=ymd(Date.now());render();break;
+    case 'replan':replanAll();break;
+    case 'shrink':shrinkLap(d.r,d.s);break;
+    case 'unshrink':unshrinkLap(d.r,d.s);break;
+    case 'racedue':(function(){var r=S.races.find(function(x){return x.id===d.id;}),v=($('#rDue')||{}).value;if(!r||!/^\d{4}-\d{2}-\d{2}$/.test(v||''))return;var t=parseYmd(v);if(t<addDays(startOfDay(Date.now()),1)||t>addDays(startOfDay(Date.now()),730)){toast('Pick a date within the next 2 years.');return;}r.due=v;if(r.event){r.event.date=v;r.event.note='date edited by you';}respread(r);save();render();toast('Finish date updated. Laps re-planned.');})();break;
+    case 'seen':S.seen[d.v]=1;save();render();break;
+    case 'newprefill':ui.tab='race';act('racenew',{});if(ui.raceForm){var tp=TPL[Number(d.v)]||TPL[0];ui.raceForm.goal=d.v==='4'?'Do well this semester':tp[1];ui.raceForm.weeks=d.v==='4'?16:tp[2];render();}break;
+    case 'rtpl':if(ui.raceForm){var tq=TPL[Number(d.v)];if(tq){ui.raceForm.goal=tq[1];ui.raceForm.weeks=tq[2];render();}}break;
+    case 'evon':if(ui.raceForm){ui.raceForm.useEvent=d.v==='1';render();}break;
+    case 'sharecard':shareCard();break;
+    case 'remind':(function(){
+      if(d.v==='off'){S.remind={on:false,hour:-1};save(true);render();return;}
+      var go=function(){S.remind={on:true,hour:d.v==='auto'?-1:Number(d.v)};save(true);render();toast('Daily nudge is on.');};
+      try{Notification.requestPermission().then(function(p){if(p==='granted')go();else toast('Notifications were not allowed in this browser.');});}catch(e){toast('Notifications are not supported here.');}
+    })();break;
+    case 'gopen':ui.gOpen=d.v;render();break;
+    case 'gclose':ui.gOpen='';render();break;
+    case 'gsave':goalSave(d.v);break;
+    case 'gstep':goalStep(d.v,d.id);break;
+    case 'bcreate':buddyJoin(true);break;
+    case 'bjoin':buddyJoin(false);break;
+    case 'bcopy':(function(){var t='Join my Startline study room. Code: '+d.v+' at '+location.origin;try{navigator.clipboard.writeText(t).then(function(){toast('Invite copied.');},function(){toast('Code: '+d.v);});}catch(e){toast('Code: '+d.v);}})();break;
+    case 'bleave':api('/api/buddy/leave',{code:d.v}).catch(function(){});setRooms(rooms().filter(function(x){return x.code!==d.v;}));delete ui.rv[d.v];render();break;
     case 'paywallclose':case 'paywallbg':ui.paywall=null;ui.payErr='';render();break;
     case 'subscribe':if(!ENT.signedIn){ui.afterLogin='checkout';ui.login=true;ui.loginErr='';render();}else startCheckout();break;
     case 'login':ui.afterLogin='';ui.login=true;ui.loginErr='';render();break;
@@ -807,6 +847,7 @@ document.addEventListener('input',function(e){
   }else if(el.id==='tStep'){ui.draft.step=el.value;ui.draft.edited=true;}
   else if(el.id==='rGoal'&&ui.raceForm){ui.raceForm.goal=el.value;}
   else if(/^qa\d+$/.test(el.id)&&ui.raceForm&&ui.raceForm.qs){var qi=ui.raceForm.qs[Number(el.id.slice(2))];if(qi)qi.a=el.value;}
+  else if(el.id==='evDate'&&ui.raceForm&&ui.raceForm.event){ui.raceForm.event.date=el.value;}
   else if(el.id==='demoName'){ui.demoName=el.value;}
 });
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!ui.conflict){if(ui.login){ui.login=false;ui.afterLogin='';render();}else if(ui.paywall){ui.paywall=null;ui.payErr='';render();}}
@@ -826,7 +867,310 @@ document.addEventListener('submit',function(e){
   }
 });
 
+
+/* ---------- pause, restart, re-plan ---------- */
+function isPaused(){return !!(S.pause&&S.pause.since);}
+function inPause(d){
+  if(isPaused()&&d>=startOfDay(S.pause.since))return true;
+  return (S.pauses||[]).some(function(p){return d>=p.from&&d<p.to;});
+}
+function respread(r){
+  var today=startOfDay(Date.now()),rem=r.laps.filter(function(l){return l.steps.some(function(s){return !s.done;});});
+  if(!rem.length)return;
+  var end=parseYmd(r.due);
+  if(end<=today){if(r.event)return;end=addDays(today,rem.length*7);r.due=ymd(end);}
+  var span=end-today,tw=rem.reduce(function(a,l){return a+(l.w||1);},0),cum=0;
+  rem.forEach(function(l){cum+=(l.w||1);l.due=ymd(today+span*cum/tw);});
+}
+function capacity(r){
+  var need=0;r.laps.forEach(function(l){l.steps.forEach(function(s){if(!s.done)need+=s.min;});});
+  var dl=Math.max(0,daysLeft(r));return {need:need,have:Math.round(dl*r.mins*0.8),days:dl};
+}
+function routeStats(r){
+  var tot=0,dn=0,exp=0,today=startOfDay(Date.now()),prev=startOfDay(r.created);
+  r.laps.forEach(function(l){
+    var lm=0,ld=0;l.steps.forEach(function(s){lm+=s.min;if(s.done)ld+=s.min;});
+    tot+=lm;dn+=ld;
+    var due=parseYmd(l.due);
+    if(due<=today)exp+=lm;else if(today>prev)exp+=lm*(today-prev)/Math.max(DAY,due-prev);
+    prev=Math.max(prev,due);
+  });
+  var pct=tot?Math.round(dn/tot*100):0,ex=tot?Math.min(100,Math.round(exp/tot*100)):0,diff=pct-ex;
+  return {pct:pct,exp:ex,state:diff>=5?'ahead':(diff>=-10?'on track':'behind')};
+}
+function fmtDateY(s){return new Date(parseYmd(s)).toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'});}
+function pauseNow(){S.pause={since:Date.now()};save();ui.reset=true;render();}
+function resumeNow(){
+  if(!isPaused())return;
+  var today=startOfDay(Date.now()),days=Math.max(0,Math.round((today-startOfDay(S.pause.since))/DAY)),moved=0,fixed=0;
+  S.pauses.push({from:startOfDay(S.pause.since),to:today});S.pauses=S.pauses.slice(-60);S.pause=null;
+  S.races.forEach(function(r){
+    if(r.demo)return;
+    if(!r.event&&days>0){r.due=ymd(addDays(parseYmd(r.due),days));moved++;}else if(r.event)fixed++;
+    respread(r);
+  });
+  save();ui.reset=true;render();
+  toast(!S.races.some(function(r){return !r.demo;})?'Welcome back.':(moved?'Welcome back. Finish dates moved '+days+' day'+(days===1?'':'s')+'.':'Welcome back. Your dates are re-planned.'));
+}
+function lastActive(){
+  var m=0;S.tasks.forEach(function(t){if(!t.demo){m=Math.max(m,t.done||0,t.started||0);}});
+  S.sessions.forEach(function(s){if(!s.demo)m=Math.max(m,s.start);});return m;
+}
+function nextStepInfo(){
+  for(var i=0;i<S.races.length;i++){
+    var r=S.races[i];if(r.demo)continue;
+    for(var j=0;j<r.laps.length;j++){var s=r.laps[j].steps.find(function(x){return !x.done;});if(s)return {r:r,l:r.laps[j],li:j,s:s};}
+  }
+  return null;
+}
+function nextStepText(){
+  var n=nextStepInfo();if(n)return 'Lap '+(n.li+1)+': '+n.s.text+' ('+Math.min(n.s.min,10)+' min is enough to start)';
+  var o=openTasks()[0];return o?('Start with: '+o.step):'Add one thing you have been putting off.';
+}
+function restartNow(){
+  var n=nextStepInfo(),t=null;
+  if(n){
+    t=n.s.taskId?taskById(n.s.taskId):null;
+    if(!t||t.done){t={id:uid(),title:n.s.text,step:suggestStep(n.s.text),created:Date.now(),started:null,done:null};S.tasks.push(t);n.s.taskId=t.id;}
+  }else t=openTasks()[0]||null;
+  ui.welcomeOff=ymd(Date.now());startSprint(t?t.id:null,2);
+}
+function replanAll(){var n=0;S.races.forEach(function(r){if(!r.demo){respread(r);n++;}});ui.welcomeOff=ymd(Date.now());save();render();toast(n?'Dates re-planned from today.':'No races to re-plan.');}
+function shrinkLap(rid,lid){
+  var r=S.races.find(function(x){return x.id===rid;}),l=r&&r.laps.find(function(x){return x.id===lid;});if(!l)return;
+  var und=l.steps.filter(function(s){return !s.done;});if(und.length<2)return;
+  var keep=Math.ceil(und.length/2),drop=und.slice(keep);
+  l.steps=l.steps.filter(function(s){return drop.indexOf(s)<0;});l.later=(l.later||[]).concat(drop);
+  save();render();toast(drop.length+' step'+(drop.length===1?'':'s')+' set aside. You can bring them back.');
+}
+function unshrinkLap(rid,lid){
+  var r=S.races.find(function(x){return x.id===rid;}),l=r&&r.laps.find(function(x){return x.id===lid;});if(!l||!l.later)return;
+  l.steps=l.steps.concat(l.later);l.later=[];save();render();
+}
+function lapTools(r,l,i,st){
+  if(r.demo)return '';
+  var und=l.steps.filter(function(s){return !s.done;}).length,h='';
+  if(und>=2&&(i===st.cur||parseYmd(l.due)<startOfDay(Date.now())))h+='<button type="button" class="btn small" data-action="shrink" data-r="'+r.id+'" data-s="'+l.id+'">Shrink this lap</button> ';
+  if(l.later&&l.later.length)h+='<button type="button" class="btn small ghost" data-action="unshrink" data-r="'+r.id+'" data-s="'+l.id+'">Bring back '+l.later.length+' step'+(l.later.length===1?'':'s')+'</button>';
+  return h?'<div class="row" style="margin-top:10px">'+h+'</div>':'';
+}
+function vRoute(r){
+  var rs=routeStats(r),st=raceStats(r),cap=capacity(r),over=daysLeft(r)<0;
+  var h='<section class="card"><div class="wins-head"><h2>Route to your goal</h2><span class="tag">'+rs.pct+'% there</span></div><div class="bar"><i style="width:'+rs.pct+'%"></i></div>'+
+    '<p class="note mono" style="margin:8px 0 0">'+(over?'Past the finish date':rs.state)+' · the plan expects '+rs.exp+'% by today · '+esc(leftText(r))+'</p>';
+  if(!r.demo&&(rs.state==='behind'||over))h+='<p style="margin-top:10px">You are behind the dates. That is fixable: re-plan spreads what is left over the days you still have.</p><button type="button" class="btn small primary" data-action="replan">Re-plan my dates</button>';
+  if(!r.demo&&cap.need>cap.have&&!over)h+='<p class="note" style="margin-top:10px">Heads up: about '+Math.round(cap.need/60)+' h of steps are left, but your daily time gives about '+Math.round(cap.have/60)+' h before the finish. Shrink a lap, add daily time, or move the date.</p>';
+  h+='<ol class="route"><li class="rt done"><i></i><div><b>Start</b><span>'+esc(fmtDateY(ymd(r.created)))+'</span></div></li>';
+  r.laps.forEach(function(l,i){
+    var full=l.steps.length>0&&l.steps.every(function(s){return s.done;}),now=i===st.cur;
+    h+='<li class="rt'+(full?' done':'')+(now?' now':'')+'"><i></i><div><b>Lap '+(i+1)+' · '+esc(l.title)+'</b><span>'+esc(fmtDateY(l.due))+'</span>'+(l.milestone?'<span>Checkpoint: '+esc(l.milestone)+'</span>':'')+(now?'<em>You are here</em>':'')+'</div></li>';
+  });
+  h+='<li class="rt fin'+(st.cur<0?' done':'')+'"><i></i><div><b>'+esc(r.event?r.event.name:'Finish line')+'</b><span>'+esc(fmtDateY(r.due))+'</span>'+(r.event?'<span>'+(r.event.source?'Source: '+esc(r.event.source)+'. ':'')+'Dates can change, so confirm on the official site.</span>':'')+'</div></li></ol></section>';
+  return h;
+}
+function dueTool(r){
+  if(r.demo)return '';
+  var min=ymd(addDays(startOfDay(Date.now()),1));
+  return '<section class="card"><label class="lbl" for="rDue" style="margin-top:0">Finish date</label><div class="row"><input id="rDue" type="date" min="'+min+'" value="'+esc(r.due)+'" style="max-width:190px"><button type="button" class="btn small" data-action="racedue" data-id="'+r.id+'">Update and re-plan</button></div><p class="note" style="margin-top:8px">If the real date changes, set it here. Your remaining laps are re-spread to fit.</p></section>';
+}
+function pauseBtn(){
+  if(isPaused()||!S.races.some(function(r){return !r.demo;})&&!S.tasks.some(function(t){return !t.demo;}))return '';
+  return '<section class="card"><h2>Need a break?</h2><p class="note" style="margin:6px 0 10px">Pause everything. Your streak is safe, and when you come back your dates are re-planned for you.</p><button type="button" class="btn" data-action="pauseplan">Pause my plans</button></section>';
+}
+
+/* ---------- Today extras: welcome back, break, weekly card, seasons ---------- */
+var TPL=[['Semester exams','Prepare for my semester exams',8],['Placement prep','Get placement-ready for campus interviews',26],['CAT / MBA entrance','Crack the CAT exam',52],['Internship hunt','Land a summer internship',12]];
+function seasonCard(){
+  var d=new Date(),m=d.getMonth(),day=d.getDate(),y=d.getFullYear(),key='',h='';
+  if((m===0&&day<=20)||(m===5&&day>=15)||m===6||(m===7&&day<=20)){key='term'+y+(m<=4?'a':'b');h='<h2>New semester, fresh start</h2><p class="sub" style="margin:6px 0 12px">Pick one goal for this term and get a plan that fits it.</p><button type="button" class="btn primary" data-action="newprefill" data-v="4">Plan this semester</button> ';}
+  else if((m===10&&day>=10)||m===11&&day<=20||(m===3&&day>=10)||(m===4&&day<=20)){key='exam'+y+(m>=9?'a':'b');h='<h2>Exam season</h2><p class="sub" style="margin:6px 0 12px">Turn the last few weeks into a plan you can actually follow.</p><button type="button" class="btn primary" data-action="newprefill" data-v="0">Plan my exam weeks</button> ';}
+  if(!key||S.seen[key])return '';
+  return '<section class="card">'+h+'<button type="button" class="btn ghost" data-action="seen" data-v="'+key+'">Not now</button></section>';
+}
+function weekView(){
+  var now=Date.now(),sum=function(a){return a.reduce(function(x,s){return x+s.min;},0);};
+  var m1=sum(S.sessions.filter(function(s){return s.start>=now-WEEK;})),m0=sum(S.sessions.filter(function(s){return s.start<now-WEEK&&s.start>=now-2*WEEK;}));
+  return {o:stats(),m1:m1,m0:m0,done:S.tasks.filter(function(t){return t.done&&t.done>=now-WEEK;}).length};
+}
+function weekCard(){
+  var w=weekView();if(!w.m1&&!w.done)return '';
+  var o=w.o,line='';
+  if(o.unlocked&&ENT.pro){var p=Math.round((o.baseline-o.recent)/o.baseline*100);line='Start delay '+fmtDur(o.baseline)+' → '+fmtDur(o.recent)+(p>=1?' ('+p+'% sooner)':'');}
+  else if(o.baseline!==null)line='Start delay baseline: '+fmtDur(o.baseline);
+  var delta=w.m0?(w.m1>=w.m0?'up '+(w.m1-w.m0)+' min':'down '+(w.m0-w.m1)+' min')+' on last week':'first full week';
+  return '<section class="card"><div class="wins-head"><h2>Your week</h2><span class="tag">'+o.streak+'-day streak</span></div>'+
+    '<div class="metric"><div class="k">Focus time<span class="n">'+delta+'</span></div><div class="val">'+w.m1+' min</div></div>'+
+    '<div class="metric"><div class="k">Tasks finished<span class="n">Last 7 days</span></div><div class="val">'+w.done+'</div></div>'+
+    (line?'<p class="note mono" style="margin:10px 0 0">'+esc(line)+'</p>':'')+
+    '<div style="margin-top:12px"><button type="button" class="btn small" data-action="sharecard">Share as image</button></div></section>';
+}
+function welcomeBack(){
+  if(isPaused())return '<section class="card"><div class="tag">On a break since '+esc(fmtDate(ymd(S.pause.since)))+'</div><h2 style="margin-top:6px">Take the time you need</h2><p class="sub" style="margin:6px 0 12px">Nothing is lost. When you resume, your dates are re-planned for you.</p><button type="button" class="btn primary big" data-action="resumeplan">Resume and re-plan</button></section>';
+  var la=lastActive();
+  if(!la||Date.now()-la<2*DAY||ui.welcomeOff===ymd(Date.now()))return '';
+  if(!nextStepInfo()&&!openTasks().length)return '';
+  var behind=S.races.some(function(r){return !r.demo&&daysLeft(r)>=0&&routeStats(r).state==='behind'||!r.demo&&daysLeft(r)<0&&!r.event;});
+  return '<section class="card"><div class="tag">Welcome back</div><h2 style="margin-top:6px">Restart in 2 minutes</h2><p class="sub" style="margin:6px 0 12px">No catching up. Just this one small step:</p><p style="margin:0 0 14px"><b>'+esc(nextStepText())+'</b></p>'+
+    '<button type="button" class="btn primary big" data-action="restart">Start 2 minutes</button>'+(behind?'<button type="button" class="btn" data-action="replan" style="margin-top:8px">Re-plan my dates first</button>':'')+
+    '<button type="button" class="btn ghost" data-action="welcomeoff" style="margin-top:6px">Not now</button></section>';
+}
+function todayExtras(){return welcomeBack()+seasonCard()+weekCard();}
+function shareCard(){
+  var w=weekView(),c=document.createElement('canvas'),x=null;c.width=1080;c.height=1350;
+  try{x=c.getContext('2d');}catch(e){}
+  if(!x){toast('Sharing images is not supported on this browser.');return;}
+  x.fillStyle='#0A0A0A';x.fillRect(0,0,1080,1350);x.fillStyle='#F5F5F5';x.textBaseline='alphabetic';
+  x.font='600 40px system-ui,-apple-system,Segoe UI,sans-serif';x.fillText('S T A R T L I N E',90,150);
+  x.fillRect(90,190,900,3);
+  x.font='700 300px system-ui,-apple-system,Segoe UI,sans-serif';x.fillText(String(w.m1),90,560);
+  x.font='500 56px system-ui,-apple-system,Segoe UI,sans-serif';x.fillText('minutes of focus this week',90,650);
+  x.fillStyle='#9A9A9A';x.font='500 52px system-ui,-apple-system,Segoe UI,sans-serif';
+  x.fillText(w.done+' task'+(w.done===1?'':'s')+' finished',90,790);
+  x.fillText(w.o.streak+'-day streak',90,870);
+  if(w.o.unlocked&&ENT.pro){var p=Math.round((w.o.baseline-w.o.recent)/w.o.baseline*100);if(p>=1)x.fillText('Starting '+p+'% sooner than week one',90,950);}
+  x.fillStyle='#F5F5F5';x.font='600 44px system-ui,-apple-system,Segoe UI,sans-serif';x.fillText('Start before you feel ready.',90,1230);
+  c.toBlob(function(b){
+    if(!b)return;
+    var f=null;try{f=new File([b],'startline-week.png',{type:'image/png'});}catch(e){}
+    if(f&&navigator.canShare&&navigator.canShare({files:[f]})){navigator.share({files:[f],text:'My week on Startline'}).catch(function(){});return;}
+    var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='startline-week.png';document.body.appendChild(a);a.click();a.remove();
+    setTimeout(function(){URL.revokeObjectURL(a.href);},4000);toast('Image saved. Post it anywhere.');
+  },'image/png');
+}
+
+/* ---------- daily nudge ---------- */
+function lget(k){try{return localStorage.getItem(k)||'';}catch(e){return '';}}
+function lset(k,v){try{localStorage.setItem(k,v);}catch(e){}}
+function usualHour(){
+  var hs=[],since=Date.now()-30*DAY;
+  S.tasks.forEach(function(t){if(!t.demo&&t.started&&t.started>since)hs.push(new Date(t.started).getHours());});
+  S.sessions.forEach(function(s){if(!s.demo&&s.start>since)hs.push(new Date(s.start).getHours());});
+  if(hs.length<3)return 18;hs.sort(function(a,b){return a-b;});return hs[Math.floor(hs.length/2)];
+}
+function fmtHour(h){return (h%12||12)+(h<12?' am':' pm');}
+function nudge(body){
+  try{
+    if(typeof Notification==='undefined'||Notification.permission!=='granted')return false;
+    if(navigator.serviceWorker&&navigator.serviceWorker.getRegistration){navigator.serviceWorker.getRegistration().then(function(r){if(r)r.showNotification('Startline',{body:body,tag:'nudge'});else new Notification('Startline',{body:body});}).catch(function(){});return true;}
+    new Notification('Startline',{body:body});return true;
+  }catch(e){return false;}
+}
+setInterval(function(){
+  var R=S.remind;if(!R||!R.on||isPaused())return;
+  var n=new Date(),hr=R.hour>=0?R.hour:usualHour();
+  if(n.getHours()<hr||n.getHours()>22)return;
+  var k=ymd(n.getTime());if(lget('startline.nudge')===k)return;
+  var sod=startOfDay(n.getTime());
+  if(S.sessions.some(function(s){return s.start>=sod;})||S.tasks.some(function(t){return t.started&&t.started>=sod;}))return;
+  if(!S.tasks.length&&!S.races.length)return;
+  lset('startline.nudge',k);
+  var b=nextStepText();if(document.hidden)nudge(b);else toast('Time to start: '+b);
+},60000);
+function remindRow(){
+  var R=S.remind||{on:false,hour:-1},on=!!R.on,auto=R.hour<0;
+  var can=typeof Notification!=='undefined'&&Notification.permission!=='denied';
+  if(!can)return '<div class="lbl">Daily nudge</div><p class="note">Notifications are blocked or not supported in this browser.</p>';
+  return '<div class="lbl">Daily nudge</div><div class="chips">'+chip('Off',!on,'remind','off')+chip('Usual time ('+fmtHour(usualHour())+')',on&&auto,'remind','auto')+[8,13,18,21].map(function(h){return chip(fmtHour(h),on&&!auto&&R.hour===h,'remind',h);}).join('')+'</div>'+
+    '<p class="note" style="margin-top:8px">One reminder a day, only if you have not started yet. It arrives while Startline is open in a tab or on your home screen. Reminders with the app fully closed need a push service, which is not added yet.</p>';
+}
+
+/* ---------- study buddies ---------- */
+var BKEY='startline.buddy',bT=0;
+function rooms(){try{var a=JSON.parse(localStorage.getItem(BKEY)||'[]');return Array.isArray(a)?a:[];}catch(e){return [];}}
+function setRooms(a){lset(BKEY,JSON.stringify(a.slice(0,5)));}
+function weekFocusMin(){var now=Date.now();return S.sessions.filter(function(s){return s.start>=now-WEEK;}).reduce(function(a,s){return a+s.min;},0);}
+function rerenderRace(){
+  if(ui.tab!=='race'||ui.raceOpen||ui.raceForm)return;
+  var el=document.activeElement;if(el&&/INPUT|TEXTAREA/.test(el.tagName))return;
+  render();
+}
+function buddyPing(started,force){
+  if(!ENT.signedIn)return;var L=rooms();if(!L.length)return;
+  var now=Date.now();if(!force&&!started&&now-bT<4000)return;bT=now;
+  var m=weekFocusMin();
+  L.forEach(function(x){
+    api('/api/buddy/update',{code:x.code,started:!!started,min:m}).then(function(v){ui.rv[x.code]=v;rerenderRace();}).catch(function(e){
+      if(e&&e.code==='no_room'){setRooms(rooms().filter(function(y){return y.code!==x.code;}));rerenderRace();}
+    });
+  });
+}
+function vBuddy(){
+  var h='<section class="card"><div class="wins-head"><h2>Study buddies</h2><span class="tag">private</span></div><p class="note" style="margin:0 0 10px">Friends in a room see only your nickname, whether you started today, and your focus minutes this week. No chat, nothing else. Use a nickname, not your full name.</p>';
+  if(!ENT.signedIn)return h+'<button type="button" class="btn" data-action="login">Sign in to use buddies</button></section>';
+  var L=rooms();
+  L.forEach(function(x){
+    var v=ui.rv[x.code];
+    h+='<div class="room"><div class="row" style="justify-content:space-between"><span class="tag mono">Code '+esc(x.code)+'</span><span class="row"><button type="button" class="btn small" data-action="bcopy" data-v="'+esc(x.code)+'">Copy invite</button><button type="button" class="btn small ghost" data-action="bleave" data-v="'+esc(x.code)+'">Leave</button></span></div>';
+    if(v)h+='<ul class="list">'+v.members.slice().sort(function(a,b){return (b.started-a.started)||(b.min-a.min);}).map(function(m){
+      return '<li class="item"><div class="body"><div class="t">'+esc(m.nick)+(m.me?' (you)':'')+'</div><div class="s mono">'+m.min+' min this week</div></div><span class="tag">'+(m.started?'Started today':'Not yet')+'</span></li>';
+    }).join('')+'</ul>';
+    else h+='<p class="note" style="margin-top:8px">Loading...</p>';
+    if(v)h+=goalBlock(x.code,v);
+    h+='</div>';
+  });
+  if(L.length<5)h+='<label class="lbl" for="bNick">Your nickname</label><input id="bNick" type="text" maxlength="16" placeholder="e.g. Jish" value="'+esc(lget('startline.nick'))+'">'+
+    '<div class="row" style="margin-top:10px"><button type="button" class="btn small primary" data-action="bcreate">Create a room</button></div>'+
+    '<label class="lbl" for="bCode">Have a code?</label><div class="row"><input id="bCode" type="text" maxlength="6" placeholder="6 characters" style="max-width:150px;text-transform:uppercase"><button type="button" class="btn small" data-action="bjoin">Join</button></div>';
+  if(ui.bErr)h+='<p class="err" role="alert" style="margin-top:10px">'+esc(ui.bErr)+'</p>';
+  return h+'</section>';
+}
+function goalBlock(code,v){
+  var g=v.goal;
+  if(!g){
+    if(ui.gOpen!==code)return '<div style="margin-top:12px"><button type="button" class="btn small" data-action="gopen" data-v="'+esc(code)+'">Set a shared goal</button></div>';
+    var min=ymd(addDays(startOfDay(Date.now()),1));
+    return '<div class="goalbox"><h3 style="margin:0 0 4px">Shared goal</h3><p class="note" style="margin:0 0 8px">Any goal, big or small, short or long: fitness, money, a project, exams. One goal for everyone in this room. It is <b>locked</b> once created, so nobody can move the goalposts.</p>'+
+      '<label class="lbl" for="gTitle">Goal</label><input id="gTitle" type="text" maxlength="80" placeholder="e.g. Run a 10K together, save for the trip, launch our side project">'+
+      '<label class="lbl" for="gDue">Finish date</label><input id="gDue" type="date" min="'+min+'" style="max-width:190px">'+
+      '<label class="lbl" for="gSteps">Steps, one per line (2 to 12)</label><textarea id="gSteps" rows="5" maxlength="1400" placeholder="Run 3 km without stopping&#10;Run 5 km&#10;Run the 10K"></textarea>'+
+      '<div class="row" style="margin-top:10px"><button type="button" class="btn small primary" data-action="gsave" data-v="'+esc(code)+'">Lock in the goal</button><button type="button" class="btn small ghost" data-action="gclose">Cancel</button></div></div>';
+  }
+  var left=Math.ceil((parseYmd(g.due)-startOfDay(Date.now()))/DAY),tot=0,dn=0;
+  v.members.forEach(function(m){tot+=m.of;dn+=m.done;});
+  var pct=tot?Math.round(dn/tot*100):0,mine=v.myDone||[];
+  var h='<div class="goalbox"><div class="wins-head" style="margin-bottom:6px"><h3 style="margin:0;overflow-wrap:anywhere">'+esc(g.title)+'</h3><span class="tag">Locked</span></div>'+
+    '<p class="note mono" style="margin:0 0 8px">Finish '+esc(fmtDateY(g.due))+' · '+(left>0?left+' day'+(left===1?'':'s')+' left':(left===0?'due today':'past the date'))+' · group '+pct+'%</p><div class="bar"><i style="width:'+pct+'%"></i></div>'+
+    '<ul class="list" style="margin-top:10px">'+v.members.map(function(m){
+      return '<li class="item"><div class="body"><div class="t">'+esc(m.nick)+(m.me?' (you)':'')+'</div><div class="bar" style="margin-top:6px"><i style="width:'+(m.of?Math.round(m.done/m.of*100):0)+'%"></i></div></div><span class="tag mono">'+m.done+'/'+m.of+'</span></li>';
+    }).join('')+'</ul><div class="lbl">Your steps</div><ul class="list">'+g.steps.map(function(st){
+      var on=mine.indexOf(st.id)>=0;
+      return '<li class="item'+(on?' dn':'')+'"><button type="button" class="check'+(on?' on':'')+'" data-action="gstep" data-v="'+esc(code)+'" data-id="'+esc(st.id)+'" aria-label="'+(on?'Undo: ':'Mark done: ')+esc(st.text)+'"></button><div class="body"><div class="t">'+esc(st.text)+'</div></div></li>';
+    }).join('')+'</ul></div>';
+  return h;
+}
+async function goalSave(code){
+  var steps=(($('#gSteps')||{}).value||'').split('\n').map(function(x){return clip(x,100);}).filter(Boolean);
+  ui.bErr='';
+  try{
+    var v=await api('/api/buddy/goal',{code:code,title:clip(($('#gTitle')||{}).value,80),due:($('#gDue')||{}).value||'',steps:steps});
+    ui.rv[code]=v;ui.gOpen='';toast('Shared goal locked in.');
+  }catch(e){ui.bErr=e.message;if(e.code==='goal_locked')ui.gOpen='';}
+  render();
+}
+async function goalStep(code,id){
+  var v=ui.rv[code];if(!v||!v.goal)return;
+  var mine=(v.myDone||[]).slice(),i=mine.indexOf(id);if(i>=0)mine.splice(i,1);else mine.push(id);
+  v.myDone=mine;var me=v.members.find(function(m){return m.me;});if(me)me.done=mine.length;
+  render();
+  try{ui.rv[code]=await api('/api/buddy/update',{code:code,started:i<0,min:weekFocusMin(),done:mine});rerenderRace();}catch(e){ui.bErr=e.message;render();}
+}
+async function buddyJoin(create){
+  var nick=clip(($('#bNick')||{}).value,16),code=clip(($('#bCode')||{}).value,6).toUpperCase();
+  ui.bErr='';
+  if(!nick){ui.bErr='Pick a nickname first.';render();return;}
+  if(!create&&code.length!==6){ui.bErr='Enter the 6-character code.';render();return;}
+  lset('startline.nick',nick);
+  try{
+    var v=await api(create?'/api/buddy/create':'/api/buddy/join',create?{nick:nick}:{code:code,nick:nick});
+    var L=rooms().filter(function(x){return x.code!==v.code;});L.push({code:v.code});setRooms(L);ui.rv[v.code]=v;
+    if(create)toast('Room created. Copy the invite and send it to a friend.');
+    buddyPing(false,true);
+  }catch(e){if(e.code==='login_required'){ui.afterLogin='';ui.login=true;}else ui.bErr=e.message;}
+  ui.reset=false;render();
+}
+
 /* ---------- start ---------- */
+if('serviceWorker' in navigator){try{navigator.serviceWorker.register('/sw.js').catch(function(){});}catch(e){}}
 render();
 if(S.timer&&!S.timer.ended&&!S.timer.paused&&S.timer.endAt<=Date.now())endSprint();
 boot();

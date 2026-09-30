@@ -43,7 +43,7 @@ p{margin:0}
 .lbl:first-child{margin-top:0}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
 .head{display:flex;flex-direction:column;gap:6px}
-input[type=text],select{width:100%;min-height:46px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:0 12px}
+input[type=text],input[type=date],select{width:100%;min-height:46px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:0 12px}
 input::placeholder{color:var(--muted);opacity:.8}
 .btn{min-height:44px;padding:0 16px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-weight:600;font-size:14px;cursor:pointer}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
@@ -137,3 +137,19 @@ img{max-width:100%}
 .price{font:600 30px var(--f-display);letter-spacing:-.02em}
 .badge{display:inline-block;font:600 10px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;background:var(--accent-soft);color:var(--accent);padding:3px 7px;border-radius:4px}
 .locked{border-style:dashed}
+.route{list-style:none;margin:16px 0 0;padding:0;position:relative}
+.rt{display:flex;gap:14px;position:relative;padding-bottom:16px}
+.rt:last-child{padding-bottom:0}
+.rt:not(:last-child)::before{content:"";position:absolute;left:6px;top:16px;bottom:0;width:2px;background:var(--track)}
+.rt i{flex:none;width:14px;height:14px;border-radius:50%;border:2px solid var(--track);background:var(--bg);margin-top:3px;position:relative;z-index:1}
+.rt.done i{background:var(--accent);border-color:var(--accent)}
+.rt.now i{border-color:var(--accent);box-shadow:0 0 0 4px var(--track)}
+.rt.fin i{border-radius:3px}
+.rt div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.rt b{font-weight:600;overflow-wrap:anywhere}
+.rt span,.rt em{font-size:13px;color:var(--muted);font-style:normal}
+.rt em{color:var(--accent);font-weight:700}
+.room{border-top:1px solid var(--track);padding-top:12px;margin-top:12px}
+
+.goalbox{border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+textarea{width:100%;font:inherit;color:inherit;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:12px;resize:vertical}
