@@ -519,6 +519,7 @@ function etaSave(k,ms){
   try{var o=JSON.parse(localStorage.getItem('startline.eta')||'{}');o[k]=Math.min(120000,Math.round(o[k]?o[k]*0.6+ms*0.4:ms));localStorage.setItem('startline.eta',JSON.stringify(o));}catch(e){}
 }
 function etaText(f){
+  if(f.retry)return 'The planner is busy. Trying again automatically (attempt '+(f.retry+1)+')...';
   var est=etaEst(f),left=est-(Date.now()-(f.t0||Date.now()));
   return left>1500?'About '+Math.ceil(left/1000)+' seconds left':'Almost there. This one is taking a little longer than usual.';
 }
@@ -698,7 +699,21 @@ function failNote(e){
   return 'The AI planner was not available, so a basic plan was used.';
 }
 function keepBasic(e){var c=e&&e.code;return c==='free_cooldown'||c==='pro_required'||c==='daily_limit'||c==='ai_unavailable';}
-function failStay(f){f.loading=false;f.err='The AI planner is busy right now, so nothing was saved. Please try again in a minute, or choose a basic plan.';ui.reset=false;render();}
+async function apiRetry(path,body,ctl,f){
+  var delays=[3000,6000,10000],stop={login_required:1,free_cooldown:1,pro_required:1,daily_limit:1,bad_goal:1,ai_unavailable:1};
+  f.retry=0;
+  for(var i=0;;i++){
+    try{var out=await api(path,body,ctl.signal);f.retry=0;return out;}
+    catch(e){
+      if(e&&e.name==='AbortError')throw e;
+      if((e&&stop[e.code])||i>=delays.length){f.retry=0;throw e;}
+      f.retry=i+1;
+      await new Promise(function(r){var t=setTimeout(r,delays[i]);ctl.signal.addEventListener('abort',function(){clearTimeout(t);r();},{once:true});});
+      if(ctl.signal.aborted){f.retry=0;throw {name:'AbortError'};}
+    }
+  }
+}
+function failStay(f){f.loading=false;f.err='The planner could not answer after several automatic tries. Nothing was lost. Tap the button again, or use a basic plan.';ui.reset=false;render();}
 function planBody(f,extra){
   var b={goal:clip(f.goal,160),weeks:f.weeks,mins:f.mins,stage:S.stage||'',today:ymd(Date.now())};
   if(f.event&&f.useEvent&&evOk(f.event))b.event={name:f.event.name,date:f.event.date,source:f.event.source||'',note:f.event.note||''};
@@ -716,7 +731,7 @@ async function nextStep(){
   f.loading='questions';f.t0=Date.now();render();
   var ctl=new AbortController();ui.abort=ctl;
   try{
-    var out=await api('/api/plan/questions',planBody(f),ctl.signal);
+    var out=await apiRetry('/api/plan/questions',planBody(f),ctl,f);
     ui.abort=null;if(ui.raceForm!==f)return;
     f.qs=(out.questions||[]).map(function(q){return {q:clip(q.q,140),options:(q.options||[]).map(function(o){return clip(o,40);}),a:''};});
     if(f.qs.length<2)throw {code:'bad_shape'};
@@ -738,7 +753,7 @@ async function buildRace(basic,note0){
     var ctl=new AbortController();ui.abort=ctl;
     var ans=(f.qs||[]).filter(function(x){return x.a&&x.a.trim();}).map(function(x){return {q:x.q,a:clip(x.a,240)};});
     try{
-      var out=await api('/api/plan',planBody(f,{answers:ans}),ctl.signal);
+      var out=await apiRetry('/api/plan',planBody(f,{answers:ans}),ctl,f);
       plan=normalizeLaps(out,cap);
       if(!plan)throw {code:'bad_shape'};
       ai=true;etaSave('plan',Date.now()-f.t0);

@@ -303,7 +303,7 @@ async function discoverGemini() {
     if (!r.ok) { aiProblem = 'gemini model list ' + r.status + ' ' + (await r.text()).replace(/\s+/g, ' ').slice(0, 160); console.error('[startline] ' + aiProblem); return; }
     const j = await r.json();
     const names = (j.models || []).filter((m) => (m.supportedGenerationMethods || []).includes('generateContent')).map((m) => String(m.name).replace(/^models\//, ''))
-      .filter((n) => /^gemini-[\d.]+-flash$/.test(n)).sort((a, b) => verOf(b) - verOf(a)).slice(0, 5);
+      .filter((n) => /^gemini-[\d.]+-flash(-lite)?$/.test(n)).sort((a, b) => (verOf(b) - verOf(a)) || (/lite/.test(a) - /lite/.test(b))).slice(0, 8);
     if (!names.length) { aiProblem = 'no stable Flash model found for this key'; console.error('[startline] ' + aiProblem); return; }
     aiModels = names; aiProblem = '';
     console.log('[startline] AI models found: ' + names.join(', '));
@@ -331,36 +331,59 @@ async function askGemini(model, prompt, maxTokens, search) {
   if (!t) { const e = new Error('gemini ' + model + ' empty answer, finish: ' + (((j.candidates || [])[0] || {}).finishReason || (j.promptFeedback && j.promptFeedback.blockReason) || 'unknown')); e.status = 0; throw e; }
   return t;
 }
-async function askAI(prompt, maxTokens, search) {
-  try {
-    if (AI_PROVIDER === 'gemini') {
-      await discoverGemini();
-      let last = new Error('no model');
-      const busy = [500, 502, 503, 504];
-      for (const m of aiModels.slice()) {
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try { const t = await askGemini(m, prompt, maxTokens, search); aiModels = [m, ...aiModels.filter((x) => x !== m)]; aiProblem = ''; return t; }
-          catch (e) {
-            last = e;
-            if (attempt === 0 && busy.includes(e.status)) { await new Promise((r) => setTimeout(r, 1500)); continue; }
-            break;
-          }
-        }
-        if (process.env.AI_MODEL || ![400, 403, 404, 429, 0, ...busy].includes(last.status)) break; // try the next model
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function askGeminiAny(prompt, maxTokens, search) {
+  await discoverGemini();
+  let last = new Error('no model');
+  const retryable = [429, 500, 502, 503, 504];
+  const deadline = Date.now() + 75000;
+  for (const m of aiModels.slice()) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (Date.now() > deadline) throw last;
+      try { const t = await askGemini(m, prompt, maxTokens, search); aiModels = [m, ...aiModels.filter((x) => x !== m)]; return t; }
+      catch (e) {
+        last = e;
+        if (attempt < 2 && retryable.includes(e.status)) { await sleep(1500 * (attempt + 1)); continue; }
+        break;
       }
-      throw last;
     }
-    const r = await fetch((process.env.AI_BASE_URL || 'https://api.anthropic.com') + '/v1/messages', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': ANTH_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: aiModels[0], max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
-      signal: AbortSignal.timeout(90000),
-    });
-    if (!r.ok) throw new Error('anthropic ' + r.status + ' ' + (await r.text()).replace(/\s+/g, ' ').slice(0, 200));
-    const j = await r.json();
-    aiProblem = '';
-    return (j.content || []).map((b) => b.text || '').join('');
-  } catch (e) { aiProblem = String(e.message).slice(0, 200); throw e; }
+    if (process.env.AI_MODEL) break;
+  }
+  throw last;
+}
+async function askAnthropic(prompt, maxTokens) {
+  let last = new Error('anthropic failed');
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const r = await fetch((process.env.AI_BASE_URL || 'https://api.anthropic.com') + '/v1/messages', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': ANTH_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: process.env.AI_MODEL && AI_PROVIDER === 'anthropic' ? process.env.AI_MODEL : 'claude-haiku-4-5-20251001', max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
+        signal: AbortSignal.timeout(90000),
+      });
+      if (!r.ok) { const e = new Error('anthropic ' + r.status + ' ' + (await r.text()).replace(/\s+/g, ' ').slice(0, 200)); e.status = r.status; throw e; }
+      const j = await r.json();
+      return (j.content || []).map((b) => b.text || '').join('');
+    } catch (e) {
+      last = e;
+      if (attempt < 2 && [0, 429, 500, 502, 503, 529].includes(e.status || 0)) { await sleep(1500 * (attempt + 1)); continue; }
+      break;
+    }
+  }
+  throw last;
+}
+// Primary provider first. If both keys exist, the other one is a backup, so one provider being busy does not stop planning.
+async function askAI(prompt, maxTokens, search) {
+  const order = AI_PROVIDER === 'gemini' ? ['gemini', ANTH_KEY && !search ? 'anthropic' : ''] : ['anthropic'];
+  let last = null;
+  for (const who of order.filter(Boolean)) {
+    try {
+      const t = who === 'gemini' ? await askGeminiAny(prompt, maxTokens, search) : await askAnthropic(prompt, maxTokens);
+      aiProblem = '';
+      return t;
+    } catch (e) { last = e; aiProblem = String(e.message).slice(0, 200); console.error('[startline] ' + who + ' failed: ' + e.message); }
+  }
+  throw last;
 }
 function parseJson(t) {
   try { return JSON.parse(t); } catch (e) { /* fall through */ }
@@ -379,9 +402,9 @@ function aiGate(req, res) {
   if ((aiUsed.get(req.uid) || 0) >= (req.pro ? AI_USER_LIMIT : FREE_DAILY_CALLS) || aiTotal >= AI_GLOBAL_LIMIT) {
     res.status(429).json({ error: 'daily_limit', message: 'Daily AI planning limit reached. Try again tomorrow.' }); return false;
   }
-  aiUsed.set(req.uid, (aiUsed.get(req.uid) || 0) + 1); aiTotal++;
   return true;
 }
+const aiCount = (req) => { aiUsed.set(req.uid, (aiUsed.get(req.uid) || 0) + 1); aiTotal++; };
 
 const daysBetween = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 864e5);
 const validEvent = (e, today) => {
@@ -428,6 +451,7 @@ app.post('/api/plan/questions', needUser, async (req, res) => {
       options: (Array.isArray(x && x.options) ? x.options : []).slice(0, 4).map((o) => clip(o, 40)).filter(Boolean),
     })).filter((x) => x.q);
     if (qs.length < 2) throw new Error('unusable questions answer: ' + clip(raw, 160));
+    aiCount(req);
     res.json({ questions: qs, event });
   } catch (e) {
     aiProblem = String(e.message).slice(0, 220); console.error('[startline] questions:', e.message);
@@ -461,6 +485,7 @@ app.post('/api/plan', needUser, async (req, res) => {
     const raw = await askAI(prompt, 5000);
     const out = parseJson(raw);
     if (!out || !Array.isArray(out.laps)) throw new Error('unusable plan answer: ' + clip(raw, 160));
+    aiCount(req);
     if (!req.pro) await store.set('user_' + req.uid, { ...req.user, freeAt: Date.now() });
     res.json({ race_name: clip(out.race_name, 60), realism: clip(out.realism, 500), laps: out.laps, event, due: finish });
   } catch (e) {
