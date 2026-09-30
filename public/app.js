@@ -296,6 +296,11 @@ function lenChips(len){
   if(a.length>5)a=a.filter(function(v){return v===2||v===len||v===defLen()||v===25||v===45;});
   return a.slice(0,5);
 }
+function nextBreak(){
+  var st=styleObj();if(!st||!st.brk)return null;
+  var lg=S.longBrk>0&&S.cycle&&S.cycle.n>=4&&Date.now()-S.cycle.at<2*36e5;
+  return {min:lg?S.longBrk:st.brk,long:lg};
+}
 function startBreak(m){
   var now=Date.now();S.timer={taskId:null,len:m,endAt:now+m*MIN,paused:false,remainMs:m*MIN,began:now,ended:false,sid:null,brk:true};
   save();ui.tab='focus';ui.reset=true;render();
@@ -392,7 +397,8 @@ function endSprint(){
   var el=T.len*MIN-remain;
   if(el<30000){S.timer=null;save();render();return;}
   var s={id:uid(),taskId:T.taskId,start:T.began,min:Math.max(1,Math.round(el/MIN)),feel:null};
-  S.sessions.push(s);T.ended=true;T.sid=s.id;save();render();buddyPing(true);
+  S.sessions.push(s);T.ended=true;T.sid=s.id;
+  var cy=S.cycle;if(!cy||Date.now()-cy.at>2*36e5)cy={n:0,at:0};cy.n++;cy.at=Date.now();S.cycle=cy;save();render();buddyPing(true);
 }
 function tick(){
   var T=S.timer;if(!T||T.ended||T.paused)return;
@@ -495,7 +501,8 @@ function vFocus(){
       h+='<div class="lbl" style="margin-top:18px">Did you finish “'+esc(t.title)+'”?</div><div class="row"><button type="button" class="btn primary" data-action="finish">Yes, finished</button><button type="button" class="btn" data-action="notyet">Not yet</button></div>';
       if(T.len===2)h+='<div class="lbl">You already started. Keep the momentum?</div><button type="button" class="btn" data-action="momentum">Keep going: '+defLen()+'-minute sprint</button>';
     }else h+='<div style="margin-top:16px"><button type="button" class="btn primary" data-action="dismiss">Done</button></div>';
-    if(s.min>=10&&styleObj()&&styleObj().brk)h+='<div class="lbl">Rest before the next one?</div><button type="button" class="btn" data-action="brk" data-v="'+styleObj().brk+'">Take a '+styleObj().brk+'-minute break</button>';
+    var nb=nextBreak();
+    if(s.min>=10&&nb)h+='<div class="lbl">'+(nb.long?'Four sprints done. Time for a longer rest.':'Rest before the next one?')+'</div><button type="button" class="btn" data-action="brk" data-v="'+nb.min+'"'+(nb.long?' data-id="long"':'')+'>Take a '+nb.min+'-minute '+(nb.long?'long ':'')+'break</button>';
     return h+'</section>'+parkCard();
   }
   var remain=T.paused?T.remainMs:Math.max(0,T.endAt-Date.now());
@@ -674,7 +681,7 @@ function vReport(){
     '<div class="metric"><div class="k">Felt focus<span class="n">Your own rating, last 7 days</span></div><div class="val">'+(o.feel==null?'–':o.feel.toFixed(1)+' / 5')+'</div></div></section>';
   h+='<details class="card fold"><summary>Settings and account</summary>'+accountRow()+planRow()+'<div class="lbl">What you are working towards</div><div class="chips">'+
     chip('Exam prep',S.stage==='school','stage','school')+chip('College',S.stage==='college','stage','college')+chip('Job or internship',S.stage==='work','stage','work')+'</div>'+
-    '<div class="lbl">How you like to work</div><div class="chips">'+STYLES.map(function(x){return chip(esc(x.name)+' · '+x.work+'/'+x.brk,S.style===x.id,'style',x.id);}).join('')+'</div>'+remindRow()+'<div class="lbl">Break and help</div><div class="row">'+(isPaused()?'<button type="button" class="btn small primary" data-action="resumeplan">Resume my plans</button>':'<button type="button" class="btn small" data-action="pauseplan">Pause my plans</button>')+'<button type="button" class="btn small" data-action="tour">Replay the tour</button></div><p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
+    '<div class="lbl">How you like to work</div><div class="chips">'+STYLES.map(function(x){return chip(esc(x.name)+' · '+x.work+'/'+x.brk,S.style===x.id,'style',x.id);}).join('')+'</div>'+(styleObj()&&styleObj().brk?'<div class="lbl">Longer break after every 4 sprints</div><div class="chips">'+[[0,'Off'],[15,'15 min'],[20,'20 min'],[30,'30 min']].map(function(x){return chip(x[1],(S.longBrk||0)===x[0],'longbrk',x[0]);}).join('')+'</div>':'')+remindRow()+'<div class="lbl">Break and help</div><div class="row">'+(isPaused()?'<button type="button" class="btn small primary" data-action="resumeplan">Resume my plans</button>':'<button type="button" class="btn small" data-action="pauseplan">Pause my plans</button>')+'<button type="button" class="btn small" data-action="tour">Replay the tour</button></div><p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
     '<div style="margin-top:12px">'+(ui.confirmErase?'<div class="row"><span class="note">'+(ENT.signedIn?'Erase your progress here and in your account?':'Erase everything on this device?')+'</span><button type="button" class="btn small primary" data-action="eraseyes">Yes, erase</button><button type="button" class="btn small" data-action="eraseno">Keep it</button></div>':'<button type="button" class="btn small" data-action="erase">Erase all my data</button>')+'</div>'+deleteAcctRow()+'</details>';
   return h;
 }
@@ -810,8 +817,9 @@ function act(a,d){
     case 'toggle':{var t=taskById(d.id);if(!t)break;if(t.done){t.done=null;save();render();}else{completeTask(d.id);render();toast(WINS[Math.floor(Math.random()*WINS.length)]);}break;}
     case 'start2':startSprint(d.id,2);break;
     case 'startt':startSprint(d.id,taskLen(taskById(d.id)));break;
-    case 'style':S.style=d.v;ui.len=null;save();render();toast('Timers now follow your style.');break;
-    case 'brk':startBreak(Number(d.v));break;
+    case 'style':S.style=d.v;if(d.v==='pomo'&&S.longBrk===undefined)S.longBrk=15;ui.len=null;save();render();toast('Timers now follow your style.');break;
+    case 'brk':if(d.id==='long')S.cycle={n:0,at:Date.now()};startBreak(Number(d.v));break;
+    case 'longbrk':S.longBrk=Number(d.v);save();render();break;
     case 'remove':S.tasks=S.tasks.filter(function(x){return x.id!==d.id;});if(S.timer&&S.timer.taskId===d.id)S.timer.taskId=null;S.races.forEach(function(r){r.laps.forEach(function(l){l.steps.forEach(function(s){if(s.taskId===d.id)s.taskId=null;});});});save();render();break;
     case 'setlen':ui.len=Number(d.v);render();break;
     case 'startFocus':startSprint(ui.focusTask||null,ui.len||defLen());break;
