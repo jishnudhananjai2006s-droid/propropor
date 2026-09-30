@@ -52,7 +52,7 @@ async function confirmPayment(body){
 async function openRazorpay(r){
   if(!window.Razorpay)await loadScript('https://checkout.razorpay.com/v1/checkout.js');
   await new Promise(function(resolve){
-    var rz=new window.Razorpay({key:r.keyId,subscription_id:r.subscriptionId,name:'Startline',description:'Startline Pro',theme:{color:'#C2410C'},
+    var rz=new window.Razorpay({key:r.keyId,subscription_id:r.subscriptionId,name:'Startline',description:'Startline Pro',theme:{color:'#111111'},
       handler:function(p){confirmPayment(p).then(resolve,resolve);},
       modal:{ondismiss:function(){resolve();}}});
     rz.open();
