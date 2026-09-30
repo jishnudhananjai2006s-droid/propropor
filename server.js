@@ -218,7 +218,7 @@ app.post('/api/buddy/create', needUser, async (req, res) => {
   const nick = cleanNick((req.body || {}).nick);
   if (!nick) return res.status(400).json({ error: 'bad_nick', message: 'Pick a nickname your friends will recognise.' });
   try {
-    if (((await store.get('user_' + req.uid)) || {}).buddies && ((await store.get('user_' + req.uid)).buddies.length >= 5)) return res.status(409).json({ error: 'too_many', message: 'You are in 5 rooms already. Leave one first.' });
+    if (((await store.get('user_' + req.uid)) || {}).buddies && ((await store.get('user_' + req.uid)).buddies.length >= 5)) return res.status(409).json({ error: 'too_many', message: 'You are in 5 crews already. Leave one first.' });
     const code = newCode();
     const room = { code, at: Date.now(), m: { [req.uid]: { nick, day: '', started: false, min: 0 } } };
     await store.set('buddy_' + code, room); await addBuddyToUser(req.uid, code, true);
@@ -230,8 +230,8 @@ app.post('/api/buddy/join', needUser, async (req, res) => {
   if (!code || !nick) return res.status(400).json({ error: 'bad_input', message: 'Enter the 6-character code and a nickname.' });
   try {
     const room = await loadRoom(code);
-    if (!room) return res.status(404).json({ error: 'no_room', message: 'That code did not match a room.' });
-    if (!room.m[req.uid] && Object.keys(room.m).length >= BUDDY_MAX) return res.status(409).json({ error: 'full', message: 'That room is full (6 people).' });
+    if (!room) return res.status(404).json({ error: 'no_room', message: 'That code did not match a crew.' });
+    if (!room.m[req.uid] && Object.keys(room.m).length >= BUDDY_MAX) return res.status(409).json({ error: 'full', message: 'That crew is full (6 people).' });
     room.m[req.uid] = Object.assign({ day: '', started: false, min: 0 }, room.m[req.uid], { nick }); room.at = Date.now();
     await store.set('buddy_' + code, room); await addBuddyToUser(req.uid, code, true);
     res.json(buddyView(room, req.uid));
@@ -241,7 +241,7 @@ app.post('/api/buddy/update', needUser, async (req, res) => {
   const code = okCode((req.body || {}).code);
   try {
     const room = code && await loadRoom(code);
-    if (!room || !room.m[req.uid]) return res.status(404).json({ error: 'no_room', message: 'You are not in that room any more.' });
+    if (!room || !room.m[req.uid]) return res.status(404).json({ error: 'no_room', message: 'You are not in that crew any more.' });
     const b = req.body || {};
     room.m[req.uid] = Object.assign(room.m[req.uid], { day: dayIST(), started: !!b.started || (room.m[req.uid].day === dayIST() && room.m[req.uid].started), min: Math.min(9999, Math.max(0, Math.round(Number(b.min) || 0))) });
     if (room.goal && Array.isArray(b.done)) { const ids = new Set(room.goal.steps.map((x) => x.id)); room.m[req.uid].done = [...new Set(b.done.map(String).filter((x) => ids.has(x)))]; }
@@ -258,8 +258,8 @@ app.post('/api/buddy/goal', needUser, async (req, res) => {
   if (title.length < 3 || steps.length < 2 || !(left >= 1 && left <= 730)) return res.status(400).json({ error: 'bad_goal', message: 'Give the goal a name, at least 2 steps, and a finish date within 2 years.' });
   try {
     const room = code && await loadRoom(code);
-    if (!room || !room.m[req.uid]) return res.status(404).json({ error: 'no_room', message: 'You are not in that room any more.' });
-    if (room.goal) return res.status(409).json({ error: 'goal_locked', message: 'This room already has a shared goal. It cannot be changed.' });
+    if (!room || !room.m[req.uid]) return res.status(404).json({ error: 'no_room', message: 'You are not in that crew any more.' });
+    if (room.goal) return res.status(409).json({ error: 'goal_locked', message: 'This crew already has a shared goal. It cannot be changed.' });
     room.goal = { title, due, created: today, steps: steps.map((text, i) => ({ id: 's' + (i + 1), text })) };
     room.at = Date.now();
     await store.set('buddy_' + code, room);

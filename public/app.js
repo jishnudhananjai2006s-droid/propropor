@@ -19,7 +19,7 @@ function fresh(){return {v:1,stage:null,tasks:[],sessions:[],parked:[],races:[],
 function load(){try{var r=localStorage.getItem(KEY);if(r){var o=JSON.parse(r);if(o&&o.v===1&&Array.isArray(o.tasks))return o;}}catch(e){}return null;}
 function save(nosync){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}if(!nosync)scheduleSync();}
 var S=load();
-var ui={ageErr:'',login:false,afterLogin:'',pendingPaid:'',loginErr:'',demoName:'',conflict:null,confirmDelAcct:false,paywall:null,busy:false,payErr:'',confirmCancel:false,tab:'today',len:null,focusTask:'',raceOpen:null,raceForm:null,confirmErase:false,confirmDel:false,draft:{title:'',step:'',when:'',edited:false},reset:false,abort:null,rv:{},gOpen:'',bErr:'',welcomeOff:''};
+var ui={ageErr:'',login:false,afterLogin:'',pendingPaid:'',loginErr:'',demoName:'',conflict:null,confirmDelAcct:false,paywall:null,busy:false,payErr:'',confirmCancel:false,tab:'today',len:null,focusTask:'',raceOpen:null,raceForm:null,confirmErase:false,confirmDel:false,draft:{title:'',step:'',when:'',edited:false},reset:false,abort:null,rv:{},gOpen:'',crewOpen:false,lapOpen:{},tourOn:null,tourStep:0,bErr:'',welcomeOff:''};
 
 /* ---------- plan and billing ---------- */
 var ENT={nextFreeAt:0,aiFree:false,pro:false,signedIn:false,uid:'',cfg:{provider:'demo',testMode:false,priceLabel:'',trialDays:0,auth:{mode:'demo',googleClientId:''},ai:{ready:false}}};
@@ -416,29 +416,29 @@ function vToday(){
     h+='<section class="card"><h2>One quick question</h2><p class="sub" style="margin:6px 0 12px">What are you working towards? It sets your default sprint length.</p><div class="chips">'+
       chip('Exam prep',false,'stage','school')+chip('College',false,'stage','college')+chip('Job or internship',false,'stage','work')+'</div></section>';
   }
-  h+=todayExtras();
+  h+=welcomeBack()+seasonCard();
   h+='<form class="card" data-form="add" autocomplete="off"><label class="lbl" for="tTitle">What have you been putting off?</label>'+
     '<input id="tTitle" type="text" maxlength="90" placeholder="'+esc(ph)+'" value="'+esc(ui.draft.title)+'">'+
+    '<details class="fold"'+(ui.draft.edited||ui.draft.when?' open':'')+'><summary>Add details (optional)</summary>'+
     '<label class="lbl" for="tStep">First step, under 2 minutes</label>'+
     '<input id="tStep" type="text" maxlength="140" placeholder="Filled in for you. Change it if you like." value="'+esc(ui.draft.step)+'">'+
-    '<label class="lbl" for="tWhen">When and where will you start? (optional)</label><input id="tWhen" type="text" maxlength="80" placeholder="e.g. After dinner, at my desk" value="'+esc(ui.draft.when)+'">'+
+    '<label class="lbl" for="tWhen">When and where will you start?</label><input id="tWhen" type="text" maxlength="80" placeholder="e.g. After dinner, at my desk" value="'+esc(ui.draft.when)+'"></details>'+
     '<div style="margin-top:14px"><button class="btn primary big" type="submit">Add task</button></div></form>';
-  h+='<section class="card"><div class="wins-head"><h2>Up next</h2><span class="tag">'+open.length+' open</span></div>';
-  if(!open.length)h+='<p class="empty">Nothing here yet. Add the one thing you keep putting off.</p>';
-  else h+='<ul class="list">'+open.map(function(t){
+  if(open.length)h+='<section class="card"><div class="wins-head"><h2>Up next</h2><span class="tag">'+open.length+' open</span></div><ul class="list">'+open.map(function(t){
     return '<li class="item"><button type="button" class="check" data-action="toggle" data-id="'+t.id+'" aria-label="Mark done: '+esc(t.title)+'"></button>'+
       '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="s">First step: '+esc(t.step)+'</div>'+(t.when?'<div class="s mono">Plan: '+esc(t.when)+'</div>':'')+'</div>'+
       '<div class="acts"><button type="button" class="btn small primary" data-action="start2" data-id="'+t.id+'">Start 2 min</button>'+
       '<button type="button" class="btn small ghost" data-action="remove" data-id="'+t.id+'">Remove</button></div></li>';
   }).join('')+'</ul>';
-  h+='</section>';
-  h+='<section class="card"><div class="wins-head"><h2>Today’s wins</h2><span class="tag">'+wins.length+' done · '+sess.length+' sprint'+(sess.length===1?'':'s')+' · '+mins+' min</span></div>';
-  if(!wins.length)h+='<p class="empty">Wins show up here. Even a 2-minute start counts.</p>';
-  else h+='<ul class="list">'+wins.map(function(t){
+  if(open.length)h+='</section>';
+  if(wins.length)h+='<section class="card"><div class="wins-head"><h2>Today’s wins</h2><span class="tag">'+wins.length+' done · '+sess.length+' sprint'+(sess.length===1?'':'s')+' · '+mins+' min</span></div>';
+  if(wins.length)h+='<ul class="list">'+wins.map(function(t){
     return '<li class="item dn"><button type="button" class="check on" data-action="toggle" data-id="'+t.id+'" aria-label="Undo: '+esc(t.title)+'"></button>'+
       '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="s mono">'+new Date(t.done).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})+'</div></div></li>';
   }).join('')+'</ul>';
-  return h+'</section>'+pauseBtn();
+  if(wins.length)h+='</section>';
+  if(!open.length&&!wins.length)h+='<section class="card"><h2>Your day starts here</h2><p class="sub" style="margin:6px 0 12px">Add the one thing you keep putting off above. Two minutes is enough to begin.</p><button type="button" class="btn small" data-action="tour">Take the 1-minute tour</button></section>';
+  return h+weekCard();
 }
 function parkCard(){
   return '<section class="card"><h2>Parking lot</h2><p class="sub" style="margin:4px 0 12px;font-size:13px">A thought pops up? Park it here and get back to work.</p>'+
@@ -479,7 +479,7 @@ function vFocus(){
     '<div class="bar"><i id="barFill" style="width:'+((T.len*MIN-remain)/(T.len*MIN)*100)+'%"></i></div>'+
     '<div class="row" style="margin-top:16px">'+(T.paused?'<button type="button" class="btn primary" data-action="resume">Resume</button>':'<button type="button" class="btn" data-action="pause">Pause</button>')+
     '<button type="button" class="btn" data-action="early">Finish early</button>'+
-    '<button type="button" class="btn ghost small" data-action="skip">Prototype: jump to end</button></div>'+
+    (ENT.cfg.testMode?'<button type="button" class="btn ghost small" data-action="skip">Prototype: jump to end</button>':'')+'</div>'+
     (T.paused?'<p class="note" style="margin-top:10px">Paused. The clock is stopped until you resume.</p>':'')+'</section>';
   return h+parkCard();
 }
@@ -492,11 +492,12 @@ function daysLeft(r){return Math.ceil((parseYmd(r.due)-startOfDay(Date.now()))/D
 function leftText(r){var d=daysLeft(r);return d>0?d+' day'+(d===1?'':'s')+' left':(d===0?'Finish line is today':'Past the finish date');}
 function vRace(){
   if(ui.raceForm)return vRaceForm();
+  if(ui.crewOpen)return vCrew();
   var r=S.races.find(function(x){return x.id===ui.raceOpen;});
   return r?vRaceDetail(r):vRaceList();
 }
 function vRaceList(){
-  var h='<div class="head"><div class="eyebrow">Long-term goals</div><h1>Race</h1></div><p class="sub">Give it a goal and a finish line. You answer a few questions, and the planner builds laps of small steps that fit you, for up to 2 years.</p>';
+  var h='<div class="head"><div class="eyebrow">Long-term goals</div><h1>Race</h1><p class="sub">Turn a big goal into small laps with real dates, up to 2 years.</p></div>';
   h+='<button type="button" class="btn primary big" data-action="racenew">New race</button>';
   if(!ENT.pro)h+='<p class="note">Free plan: one AI-planned race every '+(Number(ENT.cfg.freeCooldownDays)||3)+' days. Pro has no waiting. <button type="button" class="btn ghost small" data-action="gopro" style="min-height:32px;padding:0 6px;color:var(--accent)">See Pro</button></p>';
   if(!S.races.length)h+='<p class="empty">No races yet. Pick one goal that matters to you.</p>';
@@ -505,7 +506,7 @@ function vRaceList(){
     h+='<button type="button" class="card racecard" data-action="raceopen" data-id="'+r.id+'"><div><div class="tag">'+(r.demo?'Example · ':'')+esc(leftText(r))+'</div><h2 style="margin-top:4px;overflow-wrap:anywhere">'+esc(r.name)+'</h2></div>'+
       '<div class="bar"><i style="width:'+(st.tot?Math.round(st.dn/st.tot*100):0)+'%"></i></div><div class="note mono">'+st.dn+' of '+st.tot+' steps · finish '+esc(fmtDate(r.due))+'</div></button>';
   });
-  h+=pauseBtn()+vBuddy();
+  h+=crewRow();
   return h;
 }
 var THINK=['Reading your goal','Caramelizing onions','Triangulating your deadline','Untangling your calendar','Sharpening pencils','Weighing the hard weeks','Charting the laps','Pacing the marathon','Balancing the rhythm','Whisking in your answers','Stress-testing the schedule','Polishing the finish line','Consulting the compass','Folding in rest days','Calibrating realism'],thkI=0;
@@ -548,14 +549,9 @@ function vRaceDetail(r){
   if(r.note)h+='<p class="note">'+esc(r.note)+'</p>';
   if(r.realism)h+='<section class="card"><div class="tag">Is this realistic?</div><p style="margin-top:6px">'+esc(r.realism)+'</p></section>';
   h+=vRoute(r);
-  h+='<section class="card"><div class="wins-head" style="margin-bottom:0"><h2>Progress</h2><span class="tag">'+st.dn+' of '+st.tot+' steps</span></div><div class="track" role="img" aria-label="Race track with '+r.laps.length+' laps">';
-  r.laps.forEach(function(l,i){
-    var full=l.steps.every(function(s){return s.done;});
-    h+=(i?'<div class="seg'+(r.laps[i-1].steps.every(function(s){return s.done;})?' done':'')+'"></div>':'')+'<div class="node'+(full?' done':'')+(i===st.cur?' now':'')+(i===r.laps.length-1?' fin':'')+'"></div>';
-  });
-  h+='</div></section>';
   r.laps.forEach(function(l,i){
     var d=l.steps.filter(function(s){return s.done;}).length;
+    if(!(i===st.cur||ui.lapOpen[l.id])){h+='<button type="button" class="card racecard lapsum" data-action="lapopen" data-v="'+l.id+'"><div><div class="tag">'+(d===l.steps.length?'Done':'By '+esc(fmtDate(l.due)))+'</div><h2 style="margin-top:4px">Lap '+(i+1)+' · '+esc(l.title)+'</h2></div><span class="tag mono">'+d+'/'+l.steps.length+' steps</span></button>';return;}
     h+='<section class="card lap"><div class="laphead"><h2>Lap '+(i+1)+' · '+esc(l.title)+'</h2><span class="tag">by '+esc(fmtDate(l.due))+' · '+d+'/'+l.steps.length+'</span></div>'+(l.focus?'<p class="sub" style="margin:4px 0 6px">'+esc(l.focus)+'</p>':'')+(l.rhythm?'<p class="note mono" style="margin:0 0 8px">Weekly rhythm: '+esc(l.rhythm)+'</p>':'')+'<ul class="list">';
     l.steps.forEach(function(s){
       var tk=s.taskId?taskById(s.taskId):null,inToday=tk&&!tk.done;
@@ -565,8 +561,9 @@ function vRaceDetail(r){
     });
     h+='</ul>'+lapTools(r,l,i,st)+'</section>';
   });
-  h+=dueTool(r);
+  h+='<details class="card fold"'+(ui.confirmDel?' open':'')+'><summary>Race settings</summary>'+dueTool(r);
   h+=ui.confirmDel?'<div class="row"><span class="note">Delete this race?</span><button type="button" class="btn small primary" data-action="racedelyes" data-id="'+r.id+'">Yes, delete</button><button type="button" class="btn small" data-action="racedelno">Keep it</button></div>':'<button type="button" class="btn ghost small" data-action="racedel" style="align-self:flex-start">Delete this race</button>';
+  h+='</details>';
   return h;
 }
 function stats(){
@@ -631,10 +628,10 @@ function vReport(){
     '<div class="metric"><div class="k">Focus time<span class="n">Last 7 days</span></div><div class="val">'+o.focus+' min</div></div>'+
     '<div class="metric"><div class="k">Follow-through streak<span class="n">'+(o.streak?'Days in a row with a finished task':'Ready when you are.')+'</span></div><div class="val">'+o.streak+' day'+(o.streak===1?'':'s')+'</div></div>'+
     '<div class="metric"><div class="k">Felt focus<span class="n">Your own rating, last 7 days</span></div><div class="val">'+(o.feel==null?'–':o.feel.toFixed(1)+' / 5')+'</div></div></section>';
-  h+='<section class="card"><h2>Your settings</h2>'+accountRow()+planRow()+'<div class="lbl">What you are working towards</div><div class="chips">'+
+  h+='<details class="card fold"><summary>Settings and account</summary>'+accountRow()+planRow()+'<div class="lbl">What you are working towards</div><div class="chips">'+
     chip('Exam prep',S.stage==='school','stage','school')+chip('College',S.stage==='college','stage','college')+chip('Job or internship',S.stage==='work','stage','work')+'</div>'+
-    remindRow()+'<p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
-    '<div style="margin-top:12px">'+(ui.confirmErase?'<div class="row"><span class="note">'+(ENT.signedIn?'Erase your progress here and in your account?':'Erase everything on this device?')+'</span><button type="button" class="btn small primary" data-action="eraseyes">Yes, erase</button><button type="button" class="btn small" data-action="eraseno">Keep it</button></div>':'<button type="button" class="btn small" data-action="erase">Erase all my data</button>')+'</div>'+deleteAcctRow()+'</section>';
+    remindRow()+'<div class="lbl">Break and help</div><div class="row">'+(isPaused()?'<button type="button" class="btn small primary" data-action="resumeplan">Resume my plans</button>':'<button type="button" class="btn small" data-action="pauseplan">Pause my plans</button>')+'<button type="button" class="btn small" data-action="tour">Replay the tour</button></div><p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
+    '<div style="margin-top:12px">'+(ui.confirmErase?'<div class="row"><span class="note">'+(ENT.signedIn?'Erase your progress here and in your account?':'Erase everything on this device?')+'</span><button type="button" class="btn small primary" data-action="eraseyes">Yes, erase</button><button type="button" class="btn small" data-action="eraseno">Keep it</button></div>':'<button type="button" class="btn small" data-action="erase">Erase all my data</button>')+'</div>'+deleteAcctRow()+'</details>';
   return h;
 }
 function renderTabs(){
@@ -647,7 +644,7 @@ function render(){
   scr.innerHTML=(S.demo?banner():'')+views[ui.tab]();
   scr.scrollTop=top;renderTabs();
   var ov=$('#overlay');if(!ov){ov=document.createElement('div');ov.id='overlay';$('#app').appendChild(ov);}
-  ov.innerHTML=ageState()!=='1'?vAge():ui.conflict?vConflict():(ui.login?vLogin():(ui.paywall?vPaywall():''));
+  ov.innerHTML=ageState()!=='1'?vAge():ui.conflict?vConflict():(ui.login?vLogin():(ui.paywall?vPaywall():(showTour()?vTour():'')));
   if(ageState()==='1'&&ui.login&&!ui.conflict)mountAuth();
 }
 
@@ -749,7 +746,7 @@ async function buildRace(basic,note0){
 function act(a,d){
   var T=S.timer;
   switch(a){
-    case 'tab':ui.tab=d.v;ui.reset=true;ui.confirmErase=false;ui.confirmDel=false;render();if(d.v==='race')buddyPing(false,true);break;
+    case 'tab':ui.crewOpen=false;ui.tab=d.v;ui.reset=true;ui.confirmErase=false;ui.confirmDel=false;render();if(d.v==='race')buddyPing(false,true);break;
     case 'stage':S.stage=d.v;save();render();break;
     case 'toggle':{var t=taskById(d.id);if(!t)break;if(t.done){t.done=null;save();render();}else{completeTask(d.id);render();toast(WINS[Math.floor(Math.random()*WINS.length)]);}break;}
     case 'start2':startSprint(d.id,2);break;
@@ -767,7 +764,13 @@ function act(a,d){
     case 'unpark':S.parked=S.parked.filter(function(x){return x.id!==d.id;});save();render();break;
     case 'racenew':if(!ENT.pro&&freeRaceWait()>0){ui.paywall='races';render();break;}ui.raceOpen=null;ui.raceForm={goal:'',weeks:8,mins:30,loading:false,err:'',step:'goal',qs:[]};ui.reset=true;render();var g=$('#rGoal');if(g)g.focus();break;
     case 'racenotify':try{Notification.requestPermission().then(function(p){ui.notify=(p==='granted');if(ui.raceForm&&ui.raceForm.loading)render();});}catch(e){}break;
-    case 'raceback':if(ui.raceForm){if(!ui.raceForm.loading){ui.raceForm=null;render();}}else{ui.raceOpen=null;ui.confirmDel=false;ui.reset=true;render();}break;
+    case 'tour':ui.tourOn=true;ui.tourStep=0;render();break;
+    case 'tournext':ui.tourStep=Math.min(TOUR.length-1,ui.tourStep+1);render();break;
+    case 'tourback':ui.tourStep=Math.max(0,ui.tourStep-1);render();break;
+    case 'tourdone':lset('startline.tour','1');ui.tourOn=false;ui.tourStep=0;ui.reset=true;render();break;
+    case 'crewopen':ui.crewOpen=true;ui.reset=true;render();buddyPing(false,true);break;
+    case 'lapopen':ui.lapOpen[d.v]=true;render();break;
+    case 'raceback':if(ui.crewOpen){ui.crewOpen=false;ui.reset=true;render();break;}if(ui.raceForm){if(!ui.raceForm.loading){ui.raceForm=null;render();}}else{ui.raceOpen=null;ui.confirmDel=false;ui.reset=true;render();}break;
     case 'raceopen':ui.raceOpen=d.id;ui.reset=true;render();break;
     case 'rweeks':ui.raceForm.weeks=Number(d.v);render();break;
     case 'rmins':ui.raceForm.mins=Number(d.v);render();break;
@@ -806,7 +809,7 @@ function act(a,d){
     case 'gstep':goalStep(d.v,d.id);break;
     case 'bcreate':buddyJoin(true);break;
     case 'bjoin':buddyJoin(false);break;
-    case 'bcopy':(function(){var t='Join my Startline study room. Code: '+d.v+' at '+location.origin;try{navigator.clipboard.writeText(t).then(function(){toast('Invite copied.');},function(){toast('Code: '+d.v);});}catch(e){toast('Code: '+d.v);}})();break;
+    case 'bcopy':(function(){var t='Join my crew on Startline. Invite code: '+d.v+' at '+location.origin;try{navigator.clipboard.writeText(t).then(function(){toast('Invite copied.');},function(){toast('Code: '+d.v);});}catch(e){toast('Code: '+d.v);}})();break;
     case 'bleave':api('/api/buddy/leave',{code:d.v}).catch(function(){});setRooms(rooms().filter(function(x){return x.code!==d.v;}));delete ui.rv[d.v];render();break;
     case 'paywallclose':case 'paywallbg':ui.paywall=null;ui.payErr='';render();break;
     case 'subscribe':if(!ENT.signedIn){ui.afterLogin='checkout';ui.login=true;ui.loginErr='';render();}else startCheckout();break;
@@ -973,7 +976,7 @@ function vRoute(r){
 function dueTool(r){
   if(r.demo)return '';
   var min=ymd(addDays(startOfDay(Date.now()),1));
-  return '<section class="card"><label class="lbl" for="rDue" style="margin-top:0">Finish date</label><div class="row"><input id="rDue" type="date" min="'+min+'" value="'+esc(r.due)+'" style="max-width:190px"><button type="button" class="btn small" data-action="racedue" data-id="'+r.id+'">Update and re-plan</button></div><p class="note" style="margin-top:8px">If the real date changes, set it here. Your remaining laps are re-spread to fit.</p></section>';
+  return '<div><label class="lbl" for="rDue">Finish date</label><div class="row"><input id="rDue" type="date" min="'+min+'" value="'+esc(r.due)+'" style="max-width:190px"><button type="button" class="btn small" data-action="racedue" data-id="'+r.id+'">Update and re-plan</button></div><p class="note" style="margin-top:8px">If the real date changes, set it here. Your remaining laps are re-spread to fit.</p></div>';
 }
 function pauseBtn(){
   if(isPaused()||!S.races.some(function(r){return !r.demo;})&&!S.tasks.some(function(t){return !t.demo;}))return '';
@@ -997,14 +1000,8 @@ function weekView(){
 function weekCard(){
   var w=weekView();if(!w.m1&&!w.done)return '';
   var o=w.o,line='';
-  if(o.unlocked&&ENT.pro){var p=Math.round((o.baseline-o.recent)/o.baseline*100);line='Start delay '+fmtDur(o.baseline)+' → '+fmtDur(o.recent)+(p>=1?' ('+p+'% sooner)':'');}
-  else if(o.baseline!==null)line='Start delay baseline: '+fmtDur(o.baseline);
-  var delta=w.m0?(w.m1>=w.m0?'up '+(w.m1-w.m0)+' min':'down '+(w.m0-w.m1)+' min')+' on last week':'first full week';
-  return '<section class="card"><div class="wins-head"><h2>Your week</h2><span class="tag">'+o.streak+'-day streak</span></div>'+
-    '<div class="metric"><div class="k">Focus time<span class="n">'+delta+'</span></div><div class="val">'+w.m1+' min</div></div>'+
-    '<div class="metric"><div class="k">Tasks finished<span class="n">Last 7 days</span></div><div class="val">'+w.done+'</div></div>'+
-    (line?'<p class="note mono" style="margin:10px 0 0">'+esc(line)+'</p>':'')+
-    '<div style="margin-top:12px"><button type="button" class="btn small" data-action="sharecard">Share as image</button></div></section>';
+  if(o.unlocked&&ENT.pro){var p=Math.round((o.baseline-o.recent)/o.baseline*100);if(p>=1)line=' · starting '+p+'% sooner';}
+  return '<section class="card"><div class="wins-head" style="margin-bottom:8px"><h2>Your week</h2><span class="tag">'+o.streak+'-day streak</span></div><p class="mono" style="margin:0 0 12px">'+w.m1+' min focus · '+w.done+' task'+(w.done===1?'':'s')+' done'+esc(line)+'</p><button type="button" class="btn small" data-action="sharecard">Share as image</button></section>';
 }
 function welcomeBack(){
   if(isPaused())return '<section class="card"><div class="tag">On a break since '+esc(fmtDate(ymd(S.pause.since)))+'</div><h2 style="margin-top:6px">Take the time you need</h2><p class="sub" style="margin:6px 0 12px">Nothing is lost. When you resume, your dates are re-planned for you.</p><button type="button" class="btn primary big" data-action="resumeplan">Resume and re-plan</button></section>';
@@ -1076,13 +1073,13 @@ function remindRow(){
     '<p class="note" style="margin-top:8px">One reminder a day, only if you have not started yet. It arrives while Startline is open in a tab or on your home screen. Reminders with the app fully closed need a push service, which is not added yet.</p>';
 }
 
-/* ---------- study buddies ---------- */
+/* ---------- crew: friends with a shared goal ---------- */
 var BKEY='startline.buddy',bT=0;
 function rooms(){try{var a=JSON.parse(localStorage.getItem(BKEY)||'[]');return Array.isArray(a)?a:[];}catch(e){return [];}}
 function setRooms(a){lset(BKEY,JSON.stringify(a.slice(0,5)));}
 function weekFocusMin(){var now=Date.now();return S.sessions.filter(function(s){return s.start>=now-WEEK;}).reduce(function(a,s){return a+s.min;},0);}
 function rerenderRace(){
-  if(ui.tab!=='race'||ui.raceOpen||ui.raceForm)return;
+  if(ui.tab!=='race'||!ui.crewOpen)return;
   var el=document.activeElement;if(el&&/INPUT|TEXTAREA/.test(el.tagName))return;
   render();
 }
@@ -1096,9 +1093,16 @@ function buddyPing(started,force){
     });
   });
 }
+function crewRow(){
+  var n=rooms().length;
+  return '<button type="button" class="card racecard" data-action="crewopen"><div><div class="tag">With friends</div><h2 style="margin-top:4px">Your crew</h2></div><div class="note">'+(n?n+' crew'+(n===1?'':'s')+' · tap to open':'Share one goal with friends and see each other progress')+'</div></button>';
+}
+function vCrew(){
+  return '<button type="button" class="btn ghost small" data-action="raceback" style="align-self:flex-start">Back</button><div class="head"><div class="eyebrow">Friends</div><h1>Your crew</h1><p class="sub">Team up on one shared goal. Everyone sees the same finish line and each other\'s progress.</p></div>'+vBuddy();
+}
 function vBuddy(){
-  var h='<section class="card"><div class="wins-head"><h2>Study buddies</h2><span class="tag">private</span></div><p class="note" style="margin:0 0 10px">Friends in a room see only your nickname, whether you started today, and your focus minutes this week. No chat, nothing else. Use a nickname, not your full name.</p>';
-  if(!ENT.signedIn)return h+'<button type="button" class="btn" data-action="login">Sign in to use buddies</button></section>';
+  var h='<section class="card"><div class="wins-head"><h2>Your crews</h2><span class="tag">private</span></div><p class="note" style="margin:0 0 10px">Friends in your crew see only your nickname, whether you started today, and your focus minutes this week. No chat, nothing else. Use a nickname, not your full name.</p>';
+  if(!ENT.signedIn)return h+'<button type="button" class="btn" data-action="login">Sign in to start a crew</button></section>';
   var L=rooms();
   L.forEach(function(x){
     var v=ui.rv[x.code];
@@ -1111,8 +1115,8 @@ function vBuddy(){
     h+='</div>';
   });
   if(L.length<5)h+='<label class="lbl" for="bNick">Your nickname</label><input id="bNick" type="text" maxlength="16" placeholder="e.g. Jish" value="'+esc(lget('startline.nick'))+'">'+
-    '<div class="row" style="margin-top:10px"><button type="button" class="btn small primary" data-action="bcreate">Create a room</button></div>'+
-    '<label class="lbl" for="bCode">Have a code?</label><div class="row"><input id="bCode" type="text" maxlength="6" placeholder="6 characters" style="max-width:150px;text-transform:uppercase"><button type="button" class="btn small" data-action="bjoin">Join</button></div>';
+    '<div class="row" style="margin-top:10px"><button type="button" class="btn small primary" data-action="bcreate">Start a crew</button></div>'+
+    '<label class="lbl" for="bCode">Have an invite code?</label><div class="row"><input id="bCode" type="text" maxlength="6" placeholder="6 characters" style="max-width:150px;text-transform:uppercase"><button type="button" class="btn small" data-action="bjoin">Join</button></div>';
   if(ui.bErr)h+='<p class="err" role="alert" style="margin-top:10px">'+esc(ui.bErr)+'</p>';
   return h+'</section>';
 }
@@ -1121,7 +1125,7 @@ function goalBlock(code,v){
   if(!g){
     if(ui.gOpen!==code)return '<div style="margin-top:12px"><button type="button" class="btn small" data-action="gopen" data-v="'+esc(code)+'">Set a shared goal</button></div>';
     var min=ymd(addDays(startOfDay(Date.now()),1));
-    return '<div class="goalbox"><h3 style="margin:0 0 4px">Shared goal</h3><p class="note" style="margin:0 0 8px">Any goal, big or small, short or long: fitness, money, a project, exams. One goal for everyone in this room. It is <b>locked</b> once created, so nobody can move the goalposts.</p>'+
+    return '<div class="goalbox"><h3 style="margin:0 0 4px">Shared goal</h3><p class="note" style="margin:0 0 8px">Any goal, big or small, short or long: fitness, money, a project, exams. One goal for the whole crew. It is <b>locked</b> once created, so nobody can move the goalposts.</p>'+
       '<label class="lbl" for="gTitle">Goal</label><input id="gTitle" type="text" maxlength="80" placeholder="e.g. Run a 10K together, save for the trip, launch our side project">'+
       '<label class="lbl" for="gDue">Finish date</label><input id="gDue" type="date" min="'+min+'" style="max-width:190px">'+
       '<label class="lbl" for="gSteps">Steps, one per line (2 to 12)</label><textarea id="gSteps" rows="5" maxlength="1400" placeholder="Run 3 km without stopping&#10;Run 5 km&#10;Run the 10K"></textarea>'+
@@ -1165,10 +1169,28 @@ async function buddyJoin(create){
   try{
     var v=await api(create?'/api/buddy/create':'/api/buddy/join',create?{nick:nick}:{code:code,nick:nick});
     var L=rooms().filter(function(x){return x.code!==v.code;});L.push({code:v.code});setRooms(L);ui.rv[v.code]=v;
-    if(create)toast('Room created. Copy the invite and send it to a friend.');
+    if(create)toast('Crew started. Copy the invite and send it to a friend.');
     buddyPing(false,true);
   }catch(e){if(e.code==='login_required'){ui.afterLogin='';ui.login=true;}else ui.bErr=e.message;}
   ui.reset=false;render();
+}
+
+/* ---------- walkthrough ---------- */
+var TOUR=[
+ {t:'Welcome to Startline',b:'Startline helps you begin the things you keep putting off. No guilt, and no big system to maintain. This tour takes one minute.'},
+ {t:'Today: just begin',b:'Add one thing you have been putting off. We suggest a tiny first step. Tap Start 2 min and begin.',tip:'Two minutes is enough to get past the hardest part, which is starting.'},
+ {t:'Focus: short sprints',b:'For longer work, pick a task and a length: 15, 25 or 45 minutes. When it ends, tell us how focused you felt.',tip:'A distracting thought? Park it on the list so it can wait.'},
+ {t:'Race: big goals, real dates',b:'For a bigger goal like an exam, an interview or a fitness target, type it and answer a few questions. You get a plan made for you, up to 2 years long. For dated goals like CAT, we look up the real date.',tip:'The route map shows how close you are. If you fall behind, one tap re-plans your dates.'},
+ {t:'Report: see that it works',b:'After two weeks you can see how much sooner you start compared with your first week. Your streak forgives one missed day a week, and you can pause your plans any time.'},
+ {t:'Friends and reminders',b:'Start a crew with friends to share one goal. It is locked once created, and everyone ticks off their own steps. Turn on a daily nudge in Report, then Settings.',tip:'You can replay this tour from Report, then Settings.'}
+];
+function showTour(){return ui.tourOn===true||(ui.tourOn!==false&&lget('startline.tour')!=='1');}
+function vTour(){
+  var n=Math.min(ui.tourStep,TOUR.length-1),st=TOUR[n],last=n===TOUR.length-1;
+  return '<div class="sheet-back"><div class="sheet tour" role="dialog" aria-modal="true" aria-label="How Startline works"><div class="dots" aria-hidden="true">'+TOUR.map(function(x,i){return '<i'+(i===n?' class="on"':'')+'></i>';}).join('')+'</div>'+
+    '<div class="eyebrow">Step '+(n+1)+' of '+TOUR.length+'</div><h2 style="font-size:24px">'+esc(st.t)+'</h2><p>'+esc(st.b)+'</p>'+(st.tip?'<p class="note">'+esc(st.tip)+'</p>':'')+
+    '<div class="row">'+(n?'<button type="button" class="btn" data-action="tourback">Back</button>':'')+'<button type="button" class="btn primary" style="flex:1" data-action="'+(last?'tourdone':'tournext')+'">'+(last?'Start using Startline':'Next')+'</button></div>'+
+    (last?'':'<button type="button" class="btn ghost small" data-action="tourdone" style="align-self:center">Skip the tour</button>')+'</div></div>';
 }
 
 /* ---------- start ---------- */
