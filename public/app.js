@@ -14,7 +14,8 @@ function fmtDur(ms){var m=ms/MIN;if(m<1)return '<1 min';if(m<100)return Math.rou
 function fmtClock(ms){var s=Math.max(0,Math.ceil(ms/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
 function clip(v,n){return String(v==null?'':v).replace(/\s+/g,' ').trim().slice(0,n);}
 
-function skinNow(){try{return localStorage.getItem('startline.skin')==='stoic'?'stoic':'classic';}catch(e){return 'classic';}}
+function skinNow(){try{return localStorage.getItem('startline.skin')==='classic'?'classic':'stoic';}catch(e){return 'stoic';}}
+function tn(a,b){return skinNow()==='stoic'?b:a;}
 function applySkin(){
   var k=skinNow(),m=document.querySelector('meta[name="theme-color"]');
   if(k==='stoic')document.documentElement.setAttribute('data-skin','stoic');else document.documentElement.removeAttribute('data-skin');
@@ -344,7 +345,8 @@ function suggestStep(text){
   for(var i=0;i<rules.length;i++){if(rules[i][0].test(s))return rules[i][1];}
   return 'Write down the very first physical action for this, then do only that.';
 }
-var WINS=['Done. That counts.','One down.','Started, then finished. That is the whole trick.','Finished. Look at the wins list.'];
+var WINS_C=['Done. That counts.','One down.','Started, then finished. That is the whole trick.','Finished. Look at the wins list.'],WINS_S=['Done. Let that be enough.','One thing done well.','Begun, then finished.','The work is its own reward.','Well done. On to the next.'];
+function winMsg(){var a=skinNow()==='stoic'?WINS_S:WINS_C;return a[Math.floor(Math.random()*a.length)];}
 function toast(msg){
   var old=$('.toast');if(old)old.remove();
   var d=document.createElement('div');d.className='toast';d.setAttribute('role','status');d.textContent=msg;
@@ -415,7 +417,7 @@ function startSprint(taskId,len){
 }
 function endSprint(){
   var T=S.timer;if(!T||T.ended)return;
-  if(T.brk){S.timer=null;save();render();toast('Break over. Ready when you are.');return;}
+  if(T.brk){S.timer=null;save();render();toast(tn('Break over. Ready when you are.','The rest is over. Return to the work.'));return;}
   var remain=T.paused?T.remainMs:Math.max(0,T.endAt-Date.now());
   var el=T.len*MIN-remain;
   if(el<30000){S.timer=null;save();render();return;}
@@ -426,7 +428,7 @@ function endSprint(){
 function tick(){
   var T=S.timer;if(!T||T.ended||T.paused)return;
   var remain=T.endAt-Date.now();
-  if(remain<=0){endSprint();if(ui.tab!=='focus'&&S.timer)toast('Sprint complete. Open Focus to log how it went.');return;}
+  if(remain<=0){endSprint();if(ui.tab!=='focus'&&S.timer)toast(tn('Sprint complete. Open Focus to log how it went.','The sprint is complete. Open Focus to record it.'));return;}
   var c=$('#clock');
   if(c){c.textContent=fmtClock(remain);var b=$('#barFill');if(b)b.style.width=((T.len*MIN-remain)/(T.len*MIN)*100)+'%';}
 }
@@ -492,7 +494,7 @@ function vToday(){
       '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="s mono">'+new Date(t.done).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})+'</div></div></li>';
   }).join('')+'</ul>';
   if(wins.length)h+='</section>';
-  if(!open.length&&!wins.length)h+='<section class="card"><h2>Your day starts here</h2><p class="sub" style="margin:6px 0 12px">Add the one thing you keep putting off above. Two minutes is enough to begin.</p><button type="button" class="btn small" data-action="tour">Take the 1-minute tour</button></section>';
+  if(!open.length&&!wins.length)h+='<section class="card"><h2>Your day starts here</h2><p class="sub" style="margin:6px 0 12px">'+tn('Add the one thing you keep putting off above. Two minutes is enough to begin.','Choose the one thing you have been avoiding. Begin with two minutes.')+'</p><button type="button" class="btn small" data-action="tour">Take the 1-minute tour</button></section>';
   return h+weekCard();
 }
 function parkCard(){
@@ -538,6 +540,7 @@ function vFocus(){
     '<button type="button" class="btn" data-action="early">Finish early</button>'+
     (ENT.cfg.testMode?'<button type="button" class="btn ghost small" data-action="skip">Prototype: jump to end</button>':'')+'</div>'+
     (T.paused?'<p class="note" style="margin-top:10px">Paused. The clock is stopped until you resume.</p>':'')+'</section>';
+  if(T.brk)h+=maximCard();
   return h+parkCard();
 }
 function raceStats(r){
@@ -841,7 +844,7 @@ function act(a,d){
   switch(a){
     case 'tab':ui.crewOpen=false;ui.tab=d.v;ui.reset=true;ui.confirmErase=false;ui.confirmDel=false;render();if(d.v==='race')buddyPing(false,true);break;
     case 'stage':S.stage=d.v;save();render();break;
-    case 'toggle':{var t=taskById(d.id);if(!t)break;if(t.done){t.done=null;save();render();}else{completeTask(d.id);render();toast(WINS[Math.floor(Math.random()*WINS.length)]);}break;}
+    case 'toggle':{var t=taskById(d.id);if(!t)break;if(t.done){t.done=null;save();render();}else{completeTask(d.id);render();toast(winMsg());}break;}
     case 'start2':startSprint(d.id,2);break;
     case 'startt':startSprint(d.id,taskLen(taskById(d.id)));break;
     case 'skin':try{localStorage.setItem('startline.skin',d.v);}catch(e){}applySkin();render();break;
@@ -856,7 +859,7 @@ function act(a,d){
     case 'early':endSprint();break;
     case 'skip':if(T&&!T.ended){T.endAt=Date.now();T.paused=false;endSprint();}break;
     case 'rate':{if(T&&T.sid){var s=S.sessions.find(function(x){return x.id===T.sid;});if(s){s.feel=Number(d.v);save();render();}}break;}
-    case 'finish':if(T&&T.taskId){completeTask(T.taskId);}S.timer=null;save();render();toast(WINS[Math.floor(Math.random()*WINS.length)]);break;
+    case 'finish':if(T&&T.taskId){completeTask(T.taskId);}S.timer=null;save();render();toast(winMsg());break;
     case 'notyet':case 'dismiss':S.timer=null;save();render();break;
     case 'momentum':if(T&&T.taskId)startSprint(T.taskId,defLen());break;
     case 'unpark':S.parked=S.parked.filter(function(x){return x.id!==d.id;});save();render();break;
@@ -963,7 +966,7 @@ document.addEventListener('submit',function(e){
     if(!title){toast('Write the task first.');$('#tTitle').focus();return;}
     var step=clip($('#tStep').value,140)||suggestStep(title);
     S.tasks.push({id:uid(),title:title,step:step,when:clip($('#tWhen').value,80),created:Date.now(),started:null,done:null});
-    ui.draft={title:'',step:'',when:'',edited:false};save();render();toast('Added. Start with the first step: 2 minutes.');
+    ui.draft={title:'',step:'',when:'',edited:false};save();render();toast(tn('Added. Start with the first step: 2 minutes.','Added. Begin with the first step: two minutes.'));
     if(showTour()&&TOUR[ui.tourStep].wait==='task')tourGo(tIdx('start'));
   }else{
     var txt=clip($('#parkIn').value,120);if(!txt)return;
@@ -1108,7 +1111,7 @@ function welcomeBack(){
   if(!la||Date.now()-la<2*DAY||ui.welcomeOff===ymd(Date.now()))return '';
   if(!nextStepInfo()&&!openTasks().length)return '';
   var behind=S.races.some(function(r){return !r.demo&&daysLeft(r)>=0&&routeStats(r).state==='behind'||!r.demo&&daysLeft(r)<0&&!r.event;});
-  return '<section class="card"><div class="tag">Welcome back</div><h2 style="margin-top:6px">Restart in 2 minutes</h2><p class="sub" style="margin:6px 0 12px">No catching up. Just this one small step:</p><p style="margin:0 0 14px"><b>'+esc(nextStepText())+'</b></p>'+
+  return '<section class="card"><div class="tag">Welcome back</div><h2 style="margin-top:6px">'+tn('Restart in 2 minutes','Begin again, in 2 minutes')+'</h2><p class="sub" style="margin:6px 0 12px">'+tn('No catching up. Just this one small step:','The past is behind you. Take only this one small step:')+'</p><p style="margin:0 0 14px"><b>'+esc(nextStepText())+'</b></p>'+
     '<button type="button" class="btn primary big" data-action="restart">Start 2 minutes</button>'+(behind?'<button type="button" class="btn" data-action="replan" style="margin-top:8px">Re-plan my dates first</button>':'')+
     '<button type="button" class="btn ghost" data-action="welcomeoff" style="margin-top:6px">Not now</button></section>';
 }
