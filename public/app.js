@@ -504,11 +504,16 @@ function vRaceList(){
   });
   return h;
 }
+var THINK=['Reading your goal','Caramelizing onions','Triangulating your deadline','Untangling your calendar','Sharpening pencils','Weighing the hard weeks','Charting the laps','Pacing the marathon','Balancing the rhythm','Whisking in your answers','Stress-testing the schedule','Polishing the finish line','Consulting the compass','Folding in rest days','Calibrating realism'],thkI=0;
+setInterval(function(){var el=document.getElementById('thk');if(!el)return;thkI=(thkI+1+Math.floor(Math.random()*3))%THINK.length;el.textContent=THINK[thkI]+'...';},2200);
+function pingDone(t,keep){try{if(ui.notify&&document.hidden&&typeof Notification!=='undefined'&&Notification.permission==='granted')new Notification('Startline',{body:t});}catch(e){}if(!keep)ui.notify=false;}
 function vRaceForm(){
   var f=ui.raceForm,h='<button type="button" class="btn ghost small" data-action="raceback" style="align-self:flex-start">Back</button><div class="head"><div class="eyebrow">New race</div><h1>'+(f.step==='questions'?'A few questions':'Set the finish line')+'</h1></div>';
   if(f.loading){
     var m=f.loading==='questions'?'Reading your goal and preparing questions for you.':'Building your plan. Longer plans can take up to a minute.';
-    return h+'<section class="card"><p><span class="spin"></span>'+m+'</p><div style="margin-top:14px"><button type="button" class="btn" data-action="racecancel">Cancel</button></div></section>';
+    var nb='';
+    if(typeof Notification!=='undefined'&&Notification.permission!=='denied'){nb=Notification.permission==='granted'&&ui.notify?'<p class="note">We will notify you when it is ready. You can switch apps.</p>':'<button type="button" class="btn" data-action="racenotify">Notify me when ready</button> ';}
+    return h+'<section class="card"><p><span class="spin"></span>'+m+'</p><p class="note" aria-live="off" id="thk">'+THINK[0]+'...</p><div style="margin-top:14px">'+nb+'<button type="button" class="btn" data-action="racecancel">Cancel</button></div></section>';
   }
   if(f.step==='questions'){
     h+='<p class="sub">Your answers shape the plan. Tap an option or type your own. Skip any you like.</p>';
@@ -685,7 +690,7 @@ async function nextStep(){
     ui.abort=null;if(ui.raceForm!==f)return;
     f.qs=(out.questions||[]).map(function(q){return {q:clip(q.q,140),options:(q.options||[]).map(function(o){return clip(o,40);}),a:''};});
     if(f.qs.length<2)throw {code:'bad_shape'};
-    f.step='questions';f.loading=false;ui.reset=true;render();
+    f.step='questions';f.loading=false;ui.reset=true;render();pingDone('Your questions are ready.',1);
   }catch(e){
     ui.abort=null;if(ui.raceForm!==f)return;
     if(e&&e.name==='AbortError'){f.loading=false;render();return;}
@@ -721,7 +726,7 @@ async function buildRace(basic,note0){
   var r=makeRace(goal,name,due,f.mins,laps,ai,false);r.note=note;if(plan&&plan.realism)r.realism=plan.realism;
   S.races.unshift(r);save();
   if(ai&&!ENT.pro)ENT.aiFree=false;
-  ui.raceForm=null;ui.raceOpen=r.id;ui.reset=true;render();
+  ui.raceForm=null;ui.raceOpen=r.id;ui.reset=true;render();pingDone('Your plan is ready.');
   toast(ai?'Your plan is ready.':'Your race is ready (basic plan).');
 }
 
@@ -746,6 +751,7 @@ function act(a,d){
     case 'momentum':if(T&&T.taskId)startSprint(T.taskId,defLen());break;
     case 'unpark':S.parked=S.parked.filter(function(x){return x.id!==d.id;});save();render();break;
     case 'racenew':if(!ENT.pro&&freeRaceWait()>0){ui.paywall='races';render();break;}ui.raceOpen=null;ui.raceForm={goal:'',weeks:8,mins:30,loading:false,err:'',step:'goal',qs:[]};ui.reset=true;render();var g=$('#rGoal');if(g)g.focus();break;
+    case 'racenotify':try{Notification.requestPermission().then(function(p){ui.notify=(p==='granted');if(ui.raceForm&&ui.raceForm.loading)render();});}catch(e){}break;
     case 'raceback':if(ui.raceForm){if(!ui.raceForm.loading){ui.raceForm=null;render();}}else{ui.raceOpen=null;ui.confirmDel=false;ui.reset=true;render();}break;
     case 'raceopen':ui.raceOpen=d.id;ui.reset=true;render();break;
     case 'rweeks':ui.raceForm.weeks=Number(d.v);render();break;
