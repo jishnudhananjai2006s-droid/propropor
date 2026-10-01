@@ -79,7 +79,7 @@ Stripe accounts for Indian businesses are invite-only, so Razorpay is the practi
 
 ### AI race planner
 
-The planner asks 3 to 5 follow-up questions about the goal, then writes a plan of up to 2 years (up to 12 laps, each with a focus, a weekly rhythm and small steps), plus an honest "is this realistic?" note. Free accounts can start one race every 3 days (`FREE_RACE_COOLDOWN_DAYS`), with at most 4 AI calls a day (`FREE_AI_DAILY_CALLS`). Pro has no waiting. The AI limits are enforced on the server. The 3-day wait on creating a race is also checked in the app. There is no built-in fallback plan: if the AI cannot answer, the user is asked to try again and nothing is used up.
+The planner asks 3 to 5 follow-up questions about the goal, then writes a plan of up to 2 years (up to 12 laps, each with a focus, a weekly rhythm and small steps), plus an honest "is this realistic?" note. Free accounts can start one race every 3 days (`FREE_RACE_COOLDOWN_DAYS`), with at most 4 AI calls a day (`FREE_AI_DAILY_CALLS`). Pro has no waiting. The AI limits are enforced on the server. The 3-day wait on creating a race is also checked in the app. Plans are sized to the time available (server enforces total minutes and drops trivial setup steps). Each day the app puts that day's work on Today by itself, sized to the user's daily time, and manual task adding is off while a race is active. There is no built-in fallback plan: if the AI cannot answer, the user is asked to try again and nothing is used up.
 
 Turn it on with one of these Secrets (Render: Environment tab):
 - **Anthropic (paid, cents per plan):** `ANTHROPIC_API_KEY` from console.anthropic.com. It uses a small, low-cost model by default. Change it with `AI_MODEL`.

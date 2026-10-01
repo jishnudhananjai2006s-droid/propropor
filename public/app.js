@@ -38,7 +38,7 @@ function maximCard(){
   return '<blockquote class="maxim">'+esc(m[0])+'<small>'+esc(m[1])+' (adapted)</small></blockquote>';
 }
 /* ---------- state (stays on this device) ---------- */
-function fresh(){return {v:1,stage:null,tasks:[],sessions:[],parked:[],races:[],timer:null,demo:false,pause:null,pauses:[],seen:{},remind:null,style:null};}
+function fresh(){return {v:1,stage:null,tasks:[],sessions:[],parked:[],races:[],timer:null,demo:false,pause:null,pauses:[],duty:{},seen:{},remind:null,style:null};}
 function load(){try{var r=localStorage.getItem(KEY);if(r){var o=JSON.parse(r);if(o&&o.v===1&&Array.isArray(o.tasks))return o;}}catch(e){}return null;}
 function save(nosync){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}if(!nosync)scheduleSync();}
 var S=load();
@@ -121,14 +121,14 @@ function getMeta(){try{return JSON.parse(localStorage.getItem(SYNCKEY)||'null')|
 function setMeta(m){try{localStorage.setItem(SYNCKEY,JSON.stringify(m));}catch(e){}}
 function exportState(){
   var nd=function(x){return !x.demo;};
-  return {v:1,stage:S.stage,tasks:S.tasks.filter(nd),sessions:S.sessions.filter(nd),parked:S.parked,races:S.races.filter(nd),pause:S.pause||null,pauses:S.pauses||[]};
+  return {v:1,stage:S.stage,tasks:S.tasks.filter(nd),sessions:S.sessions.filter(nd),parked:S.parked,races:S.races.filter(nd),pause:S.pause||null,pauses:S.pauses||[],duty:S.duty||{}};
 }
 function hasReal(st){return st.tasks.length>0||st.sessions.length>0||st.races.length>0||st.parked.length>0;}
 function adopt(st){
   S.stage=st.stage||S.stage;
   S.tasks=Array.isArray(st.tasks)?st.tasks:[];S.sessions=Array.isArray(st.sessions)?st.sessions:[];
   S.parked=Array.isArray(st.parked)?st.parked:[];S.races=Array.isArray(st.races)?st.races:[];
-  S.pause=st.pause&&st.pause.since?{since:Number(st.pause.since)}:null;S.pauses=Array.isArray(st.pauses)?st.pauses:[];S.demo=false;S.timer=null;ui.focusTask='';ui.raceOpen=null;save(true);
+  S.pause=st.pause&&st.pause.since?{since:Number(st.pause.since)}:null;S.pauses=Array.isArray(st.pauses)?st.pauses:[];S.duty=st.duty&&typeof st.duty==='object'?st.duty:{};S.demo=false;S.timer=null;ui.focusTask='';ui.raceOpen=null;ensureDuty();save(true);
 }
 function wipeLocal(){
   clearTimeout(syncT);
@@ -442,7 +442,7 @@ function makeRace(goal,name,due,mins,laps,ai,demo){
   return r;
 }
 if(!S){S=fresh();seedDemo();save();}
-S.pauses=Array.isArray(S.pauses)?S.pauses:[];S.seen=S.seen||{};if(S.pause===undefined)S.pause=null;
+S.pauses=Array.isArray(S.pauses)?S.pauses:[];S.seen=S.seen||{};S.duty=S.duty&&typeof S.duty==='object'?S.duty:{};if(S.pause===undefined)S.pause=null;
 
 /* ---------- timer ---------- */
 function startSprint(taskId,len){
@@ -476,9 +476,43 @@ document.addEventListener('visibilitychange',tick);
 function completeTask(id){
   var t=taskById(id);if(!t||t.done)return;
   t.done=Date.now();buddyPing(true);
-  S.races.forEach(function(r){r.laps.forEach(function(l){l.steps.forEach(function(s){if(s.taskId===id&&!s.done)s.done=t.done;});});});
+  if(t.duty&&t.sid){
+    S.races.forEach(function(r){r.laps.forEach(function(l){l.steps.forEach(function(s){
+      if(s.id===t.sid&&!s.done){s.spent=(s.spent||0)+(t.min||0);if(s.spent>=s.min-4){s.spent=s.min;s.done=t.done;}}
+    });});});
+  }else S.races.forEach(function(r){r.laps.forEach(function(l){l.steps.forEach(function(s){if(s.taskId===id&&!s.done)s.done=t.done;});});});
   save();
 }
+/* Daily duty: each day the plan puts that day's work on Today by itself, sized to the daily time the user chose. */
+function clearDemo(){
+  S.tasks=S.tasks.filter(function(x){return !x.demo;});S.sessions=S.sessions.filter(function(x){return !x.demo;});S.races=S.races.filter(function(x){return !x.demo;});
+  if(S.timer&&S.timer.taskId&&!taskById(S.timer.taskId))S.timer.taskId=null;
+  if(ui.raceOpen&&!S.races.some(function(r){return r.id===ui.raceOpen;}))ui.raceOpen=null;
+  S.demo=false;
+}
+function ensureDuty(){
+  if(isPaused())return false;
+  var day=ymd(Date.now()),added=false;S.duty=S.duty||{};
+  S.races.forEach(function(r){
+    if(r.demo||S.duty[r.id]===day)return;
+    S.tasks=S.tasks.filter(function(t){return !(t.duty&&t.rid===r.id&&!t.done&&t.duty!==day);});
+    var budget=Math.max(10,r.mins||30);
+    for(var i=0;i<r.laps.length&&budget>=10;i++){
+      var l=r.laps[i];
+      for(var j=0;j<l.steps.length&&budget>=10;j++){
+        var st=l.steps[j];if(st.done)continue;
+        var left=Math.max(5,st.min-(st.spent||0)),chunk=Math.min(left,budget);
+        if(left>chunk&&left-chunk<10)chunk=left;
+        var t={id:uid(),title:st.text,step:suggestStep(st.text),min:chunk,created:Date.now(),started:null,done:null,duty:day,rid:r.id,sid:st.id,part:chunk<left?('Part of a '+Math.round(st.min/5)*5+' min step'):'',lap:l.title};
+        S.tasks.push(t);st.taskId=t.id;budget-=chunk;added=true;
+      }
+    }
+    S.duty[r.id]=day;
+  });
+  if(added)save();
+  return added;
+}
+function hasActivePlan(){return S.races.some(function(r){return !r.demo&&r.laps.some(function(l){return l.steps.some(function(s){return !s.done;});});});}
 function findStep(rid,sid){
   var r=S.races.find(function(x){return x.id===rid;});if(!r)return null;
   for(var i=0;i<r.laps.length;i++){var s=r.laps[i].steps.find(function(x){return x.id===sid;});if(s)return {r:r,l:r.laps[i],s:s};}
@@ -512,11 +546,11 @@ function weekStrip(){
   return h+'</div>';
 }
 function taskCard(t){
-  var meta=(t.min?'<span class="pill">'+t.min+' min</span>':'')+(t.when?'<span class="pill">'+esc(t.when)+'</span>':'')+(t.started?'<span class="pill on">Started</span>':'');
+  var meta=(t.min?'<span class="pill">'+t.min+' min</span>':'')+(t.part?'<span class="pill">'+esc(t.part)+'</span>':'')+(t.lap?'<span class="pill">'+esc(t.lap)+'</span>':'')+(t.when?'<span class="pill">'+esc(t.when)+'</span>':'')+(t.started?'<span class="pill on">Started</span>':'');
   return '<li class="card tcard"><button type="button" class="check" data-action="toggle" data-id="'+t.id+'" aria-label="Mark done: '+esc(t.title)+'"></button>'+
     '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="s">First step: '+esc(t.step)+'</div>'+(meta?'<div class="meta">'+meta+'</div>':'')+'</div>'+
     '<div class="acts">'+(t.min>2?'<button type="button" class="btn small primary"'+(ui.tourTaskId===t.id?' data-tour="start"':'')+' data-action="startt" data-id="'+t.id+'">Start '+taskLen(t)+' min</button><button type="button" class="btn small" data-action="start2" data-id="'+t.id+'">Just 2 min</button>':'<button type="button" class="btn small primary"'+(ui.tourTaskId===t.id?' data-tour="start"':'')+' data-action="start2" data-id="'+t.id+'">Start 2 min</button>')+
-    '<button type="button" class="btn small ghost" data-action="remove" data-id="'+t.id+'">Remove</button></div></li>';
+    (t.duty?'':'<button type="button" class="btn small ghost" data-action="remove" data-id="'+t.id+'">Remove</button>')+'</div></li>';
 }
 function addForm(ph){
   var d=ui.draft,mins=[0,15,25,45];if(defLen()>2&&mins.indexOf(defLen())<0)mins.push(defLen());mins.sort(function(a,b){return a-b;});
@@ -538,7 +572,7 @@ function vToday(){
   var todo=open.filter(function(t){return !t.started;}),prog=open.filter(function(t){return t.started;});
   var f=ui.tf||(todo.length?'todo':(prog.length?'prog':'done'));
   var h='<div class="topbar"><div class="head"><div class="eyebrow">'+esc(new Date().toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}))+'</div><h1>'+greeting()+'</h1><p class="sub">'+esc(tn('What will you begin today?','Choose one thing. Begin.'))+'</p></div>'+
-    '<button type="button" class="roundbtn" data-action="addtoggle" aria-label="Add a task" aria-expanded="'+(ui.addOpen?'true':'false')+'">'+(ui.addOpen?'×':'+')+'</button></div>';
+    (hasActivePlan()?'':'<button type="button" class="roundbtn" data-action="addtoggle" aria-label="Add a task" aria-expanded="'+(ui.addOpen?'true':'false')+'">'+(ui.addOpen?'×':'+')+'</button>')+'</div>';
   h+=maximCard();
   h+=welcomeBack()+seasonCard();
   h+=ringCard(wins,open,sess,mins)+weekStrip();
@@ -547,13 +581,13 @@ function vToday(){
       chip('Exam prep',false,'stage','school')+chip('College',false,'stage','college')+chip('Job or internship',false,'stage','work')+'</div></section>';
   }
   if(S.stage&&!S.style)h+='<section class="card"><h2>How do you like to work?</h2><p class="sub" style="margin:6px 0 14px">Your timers and breaks will follow this. You can change it later in Report.</p><div class="chips">'+STYLES.map(function(x){return chip(esc(x.name)+' · '+x.work+'/'+x.brk,false,'style',x.id);}).join('')+'</div><p class="note" style="margin-top:12px">Work minutes / break minutes. Pomodoro is 25/5.</p></section>';
-  if(ui.addOpen||(!S.tasks.length))h+=addForm(ph);
+  if(!hasActivePlan()&&(ui.addOpen||(!S.tasks.length)))h+=addForm(ph);
   h+='<div class="seg3" role="tablist" aria-label="Task filter">'+[['todo','To do',todo.length],['prog','In progress',prog.length],['done','Done',wins.length]].map(function(x){return '<button type="button" role="tab" class="fpill" aria-pressed="'+(f===x[0]?'true':'false')+'" data-action="tf" data-v="'+x[0]+'"><b>'+x[2]+'</b> '+x[1]+'</button>';}).join('')+'</div>';
   var list=f==='todo'?todo:(f==='prog'?prog:[]);
   if(f==='done'){
     h+=wins.length?'<ul class="tlist">'+wins.map(function(t){return '<li class="card tcard dn"><button type="button" class="check on" data-action="toggle" data-id="'+t.id+'" aria-label="Undo: '+esc(t.title)+'"></button><div class="body"><div class="t">'+esc(t.title)+'</div><div class="s mono">'+new Date(t.done).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})+'</div></div></li>';}).join('')+'</ul>':'<p class="empty">Wins show up here. Even a 2-minute start counts.</p>';
   }else if(list.length)h+='<ul class="tlist">'+list.map(taskCard).join('')+'</ul>';
-  else h+='<p class="empty">'+(f==='todo'?tn('Nothing waiting. Tap + to add the one thing you keep putting off.','Nothing waits here. Tap + and name the one thing you have been avoiding.'):'Nothing in progress. Start a task and it shows up here.')+'</p>';
+  else h+='<p class="empty">'+(f==='todo'?(hasActivePlan()?'Today\u2019s duty is done. Rest, and tomorrow\u2019s work will appear here by itself.':tn('Nothing waiting. Tap + to add the one thing you keep putting off.','Nothing waits here. Tap + and name the one thing you have been avoiding.')):'Nothing in progress. Start a task and it shows up here.')+'</p>';
   return h;
 }
 function parkCard(){
@@ -693,8 +727,8 @@ function vRaceDetail(r){
     l.steps.forEach(function(s){
       var tk=s.taskId?taskById(s.taskId):null,inToday=tk&&!tk.done;
       h+='<li class="item'+(s.done?' dn':'')+'"><button type="button" class="check'+(s.done?' on':'')+'" data-action="stepToggle" data-r="'+r.id+'" data-s="'+s.id+'" aria-label="'+(s.done?'Undo step':'Mark step done')+': '+esc(s.text)+'"></button>'+
-        '<div class="body"><div class="t">'+esc(s.text)+'</div><div class="s mono">'+s.min+' min</div></div>'+
-        (s.done?'':'<div class="acts">'+(inToday?'<span class="tag">In Today</span>':'<button type="button" class="btn small" data-action="stepToday" data-r="'+r.id+'" data-s="'+s.id+'">Add to Today</button>')+'</div>')+'</li>';
+        '<div class="body"><div class="t">'+esc(s.text)+'</div><div class="s mono">'+(s.spent&&!s.done?s.spent+' of '+s.min+' min done':s.min+' min')+'</div></div>'+
+        (s.done?'':'<div class="acts">'+(inToday?'<span class="tag">On Today</span>':'')+'</div>')+'</li>';
     });
     h+='</ul>'+lapTools(r,l,i,st)+'</section>';
   });
@@ -796,10 +830,10 @@ function normalizeLaps(out,cap){
   if(!out||!Array.isArray(out.laps))return null;
   var laps=out.laps.slice(0,12).map(function(l){
     var steps=(l&&Array.isArray(l.steps)?l.steps:[]).slice(0,6).map(function(s){
-      var m=Math.round(Number(s&&s.minutes));if(!(m>=2))m=10;
-      return {text:clip(s&&s.text,120),min:Math.min(m,cap)};
+      var m=Math.round(Number(s&&s.minutes));if(!(m>=15))m=Math.max(20,cap);if(m>1200)m=1200;
+      return {text:clip(s&&s.text,120),min:m};
     }).filter(function(s){return s.text;});
-    var w=Math.round(Number(l&&l.weight));if(!(w>=1))w=1;if(w>10)w=10;
+    var w=steps.reduce(function(a,x){return a+x.min;},0)||1;
     return {title:clip(l&&l.title,40)||'Next lap',focus:clip(l&&l.focus,170),rhythm:clip(l&&l.rhythm,170),milestone:clip(l&&l.milestone,60),weight:w,steps:steps};
   }).filter(function(l){return l.steps.length;});
   return laps.length>=3?{name:clip(out.race_name,48),realism:clip(out.realism,500),laps:laps}:null;
@@ -882,10 +916,10 @@ async function buildRace(){
   if(!plan){planErr(f,{code:'ai_failed'});return;}
   var laps=plan.laps,name=plan.name||clip(goal,48);
   var r=makeRace(goal,name,due,f.mins,laps,ai,false);r.note=note;if(plan&&plan.realism)r.realism=plan.realism;if(useEv)r.event={name:clip(f.event.name,60),date:f.event.date,source:clip(f.event.source,60),note:clip(f.event.note,100)};
-  S.races.unshift(r);save();
+  clearDemo();S.races.unshift(r);ensureDuty();save();
   if(ai&&!ENT.pro)ENT.aiFree=false;
   ui.raceForm=null;ui.raceOpen=r.id;ui.reset=true;render();pingDone('Your plan is ready.');
-  toast('Your plan is ready.');
+  toast('Your plan is ready. Today\u2019s work is already on your list.');
 }
 
 /* ---------- events ---------- */
@@ -933,8 +967,7 @@ function act(a,d){
     case 'raceskipq':ui.raceForm.qs=[];buildRace(false);break;
     case 'qopt':(function(){var q=ui.raceForm.qs[Number(d.id)];if(q){var o=q.options[Number(d.v)];q.a=(q.a===o?'':o);render();}})();break;
     case 'racecancel':if(ui.abort)ui.abort.abort();break;
-    case 'stepToggle':{var f=findStep(d.r,d.s);if(!f)break;if(f.s.done){f.s.done=null;}else{f.s.done=Date.now();var tk=f.s.taskId?taskById(f.s.taskId):null;if(tk&&!tk.done)tk.done=f.s.done;}save();render();break;}
-    case 'stepToday':{var g2=findStep(d.r,d.s);if(!g2)break;var nt={id:uid(),title:g2.s.text,step:suggestStep(g2.s.text),min:g2.s.min,created:Date.now(),started:null,done:null};if(g2.r.demo)nt.demo=1;S.tasks.push(nt);g2.s.taskId=nt.id;save();render();toast('Added to Today.');break;}
+    case 'stepToggle':{var f=findStep(d.r,d.s);if(!f)break;if(f.s.done){f.s.done=null;f.s.spent=0;}else{f.s.done=Date.now();f.s.spent=f.s.min;var tk=f.s.taskId?taskById(f.s.taskId):null;if(tk&&!tk.done)tk.done=f.s.done;}save();render();break;}
     case 'racedel':ui.confirmDel=true;render();break;
     case 'racedelno':ui.confirmDel=false;render();break;
     case 'racedelyes':S.races=S.races.filter(function(x){return x.id!==d.id;});ui.raceOpen=null;ui.confirmDel=false;ui.reset=true;save();render();break;
@@ -985,10 +1018,7 @@ function act(a,d){
     case 'cancelyes':managePlan();break;
     case 'cancelno':ui.confirmCancel=false;render();break;
     case 'cleardemo':
-      S.tasks=S.tasks.filter(function(x){return !x.demo;});S.sessions=S.sessions.filter(function(x){return !x.demo;});S.races=S.races.filter(function(x){return !x.demo;});
-      if(S.timer&&S.timer.taskId&&!taskById(S.timer.taskId))S.timer.taskId=null;
-      if(ui.raceOpen&&!S.races.some(function(r){return r.id===ui.raceOpen;}))ui.raceOpen=null;
-      S.demo=false;save();render();toast('Examples cleared. Start with your own.');break;
+      clearDemo();save();render();toast('Examples cleared. Start with your own.');break;
     case 'erase':ui.confirmErase=true;render();break;
     case 'eraseno':ui.confirmErase=false;render();break;
     case 'eraseyes':eraseAll();break;
@@ -1071,7 +1101,7 @@ function resumeNow(){
     if(!r.event&&days>0){r.due=ymd(addDays(parseYmd(r.due),days));moved++;}else if(r.event)fixed++;
     respread(r);
   });
-  save();ui.reset=true;render();
+  ensureDuty();save();ui.reset=true;render();
   toast(!S.races.some(function(r){return !r.demo;})?'Welcome back.':(moved?'Welcome back. Finish dates moved '+days+' day'+(days===1?'':'s')+'.':'Welcome back. Your dates are re-planned.'));
 }
 function lastActive(){
@@ -1410,5 +1440,8 @@ window.addEventListener('resize',function(){if(showTour())placeSpot();});
 if('serviceWorker' in navigator){try{navigator.serviceWorker.register('/sw.js').catch(function(){});}catch(e){}}
 render();
 if(S.timer&&!S.timer.ended&&!S.timer.paused&&S.timer.endAt<=Date.now())endSprint();
+ensureDuty();
+setInterval(function(){if(ensureDuty()&&!S.timer)render();},60000);
+document.addEventListener('visibilitychange',function(){if(!document.hidden&&ensureDuty())render();});
 boot();
 })();
