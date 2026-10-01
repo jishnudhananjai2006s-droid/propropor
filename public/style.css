@@ -293,3 +293,9 @@ form .fold summary::after{content:"+";margin-left:2px}
 :root[data-skin="fresh"] .addform{border:2px solid var(--accent-soft)}
 :root[data-skin="fresh"] .fpill{border-color:transparent;box-shadow:0 1px 2px rgba(15,59,43,.06)}
 :root[data-skin="fresh"] .fpill[aria-pressed="true"]{background:var(--accent-soft);color:var(--ink);box-shadow:none}
+
+/* sign-in gate: nothing of the app is visible until signed in */
+.app.gated #screen,.app.gated #tabs,.app.gated #tourbox,.app.gated .tour-wrap,.app.gated #spotwrap{visibility:hidden}
+.sheet-back.gate{align-items:center;justify-content:center;background:var(--bg,#fff)}
+.sheet-back.gate .sheet{box-shadow:none;max-height:none;border-radius:0;background:transparent}
+.splash{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg,#fff);z-index:10}

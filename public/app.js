@@ -104,6 +104,7 @@ async function managePlan(){
 async function boot(){
   try{ENT.cfg=await api('/api/config');}catch(e){}
   await refreshStatus();
+  ui.booted=true;if(!ENT.signedIn)ui.login=true;
   var q=new URLSearchParams(location.search);
   if(q.get('paid')){
     var pid=q.get('paid');history.replaceState(null,'',location.pathname);
@@ -129,6 +130,13 @@ function adopt(st){
   S.parked=Array.isArray(st.parked)?st.parked:[];S.races=Array.isArray(st.races)?st.races:[];
   S.pause=st.pause&&st.pause.since?{since:Number(st.pause.since)}:null;S.pauses=Array.isArray(st.pauses)?st.pauses:[];S.demo=false;S.timer=null;ui.focusTask='';ui.raceOpen=null;save(true);
 }
+function wipeLocal(){
+  clearTimeout(syncT);
+  ['startline.v1','startline.eta','startline.tour','startline.nudge','startline.nick','startline.buddy','startline.sync'].forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});
+  S=fresh();seedDemo();
+  ui.tab='today';ui.raceOpen=null;ui.raceForm=null;ui.focusTask='';ui.crewOpen=false;ui.lapOpen=null;ui.confirmErase=false;ui.confirmDelAcct=false;ui.tourOn=undefined;ui.tourStep=0;ui.conflict=null;ui.reset=true;
+  save(true);
+}
 function scheduleSync(){
   if(!ENT.signedIn||ui.conflict||getMeta().uid!==ENT.uid)return;
   clearTimeout(syncT);syncT=setTimeout(function(){pushSync(false);},4000);
@@ -150,6 +158,7 @@ async function pullSync(){
   syncing=true;
   try{
     var c=await api('/api/sync'),m=getMeta();
+    if(m.uid&&m.uid!==ENT.uid){wipeLocal();render();}
     if(m.uid!==ENT.uid){m={uid:ENT.uid,at:0};setMeta(m);}
     var hasLocal=hasReal(exportState());
     if(!c.at){if(hasLocal)await pushSync(true,m);}
@@ -183,6 +192,7 @@ async function mountAuth(){
 async function onAuthed(tok){
   setTok(tok);ui.loginErr='';
   await refreshStatus();
+  var pm=getMeta();if(pm.uid&&pm.uid!==ENT.uid)wipeLocal();
   ui.login=false;render();
   await pullSync();
   if(!ui.conflict){toast('Signed in.');runAfterLogin();}
@@ -204,6 +214,11 @@ function runAfterLogin(){
   }else if(a==='plan'){if(ui.raceForm&&!ui.raceForm.loading&&ui.raceForm.step==='goal')nextStep();
   }else if(a==='paid'&&ui.pendingPaid){var id=ui.pendingPaid;ui.pendingPaid='';confirmPayment({session_id:id});}
 }
+async function doSignOut(){
+  try{await Promise.race([pushSync(false),new Promise(function(r){setTimeout(r,4000);})]);}catch(e){}
+  setTok('');ENT.signedIn=false;ENT.pro=false;ENT.uid='';setLastPro(false);
+  wipeLocal();ui.login=true;ui.afterLogin='';ui.loginErr='';ui.demoName='';render();
+}
 async function eraseAll(){
   if(ENT.signedIn){
     try{await api('/api/sync',undefined,undefined,'DELETE');setMeta({uid:ENT.uid,at:0});}
@@ -216,8 +231,8 @@ async function eraseAll(){
 async function deleteAccount(){
   try{await api('/api/account',undefined,undefined,'DELETE');}
   catch(e){ui.confirmDelAcct=false;render();toast(e.message);return;}
-  setTok('');ENT.signedIn=false;ENT.pro=false;ENT.uid='';setLastPro(false);setMeta({uid:'',at:0});
-  ui.confirmDelAcct=false;render();toast('Account deleted. Your data on this device is unchanged.');
+  setTok('');ENT.signedIn=false;ENT.pro=false;ENT.uid='';setLastPro(false);
+  wipeLocal();ui.login=true;render();toast('Account deleted.');
 }
 var AGEKEY='startline.adult',ageMem='';
 function ageState(){if(ageMem)return ageMem;try{return localStorage.getItem(AGEKEY)||'';}catch(e){return '';}}
@@ -239,13 +254,13 @@ function checkAge(){
   ui.ageErr='';setAge(age>=18?'1':'0');render();
 }
 function vLogin(){
-  var a=ENT.cfg.auth||{},why=ui.afterLogin==='checkout'?'Sign in first so Pro follows you to every device.':(ui.afterLogin==='paid'?'Sign in to finish turning on Pro.':'Back up your progress and keep Pro on every device.');
-  var h='<div class="sheet-back" data-action="loginbg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Sign in"><div class="row"><span class="badge">Sign in</span>'+(a.mode==='demo'?'<span class="badge">Test mode</span>':'')+'</div><h2 style="font-size:24px">'+esc(why)+'</h2>';
+  var a=ENT.cfg.auth||{},gate=!ENT.signedIn,why=gate?'Sign in to start':ui.afterLogin==='checkout'?'Sign in first so Pro follows you to every device.':(ui.afterLogin==='paid'?'Sign in to finish turning on Pro.':'Back up your progress and keep Pro on every device.');
+  var h='<div class="sheet-back'+(gate?' gate':'')+'"'+(gate?'':' data-action="loginbg"')+'><div class="sheet" role="dialog" aria-modal="true" aria-label="Sign in"><div class="row"><span class="badge">Sign in</span>'+(a.mode==='demo'?'<span class="badge">Test mode</span>':'')+'</div><h2 style="font-size:24px">'+esc(why)+'</h2>';
   if(a.mode==='google')h+='<div id="gbtn" style="min-height:44px"></div>';
   else h+='<div><label class="lbl" for="demoName">Test name (any name you like)</label><input id="demoName" type="text" maxlength="20" autocomplete="off" placeholder="e.g. alex" value="'+esc(ui.demoName||'')+'"></div><button type="button" class="btn primary big" data-action="demologin">Continue</button><p class="note">Test mode: sign in with the same name on another device to see your account follow you.</p>';
   h+='<p class="err" id="loginErr" role="alert">'+esc(ui.loginErr)+'</p>'+
     '<p class="note">We keep an account id, your subscription, and a backup of your progress. We do not keep your name or email.</p>'+
-    '<button type="button" class="btn ghost" data-action="loginclose">Not now</button></div></div>';
+    (gate?'':'<button type="button" class="btn ghost" data-action="loginclose">Not now</button>')+'</div></div>';
   return h;
 }
 function vConflict(){
@@ -744,9 +759,10 @@ function render(){
   var views={today:vToday,focus:vFocus,race:vRace,report:vReport};
   scr.innerHTML=(S.demo?banner():'')+views[ui.tab]();
   scr.scrollTop=top;renderTabs();
+  var gate=!ENT.signedIn;$('#app').classList.toggle('gated',gate);
   var ov=$('#overlay');if(!ov){ov=document.createElement('div');ov.id='overlay';$('#app').appendChild(ov);}
-  ov.innerHTML=ageState()!=='1'?vAge():ui.conflict?vConflict():(ui.login?vLogin():(ui.paywall?vPaywall():''));
-  if(ageState()==='1'&&ui.login&&!ui.conflict)mountAuth();
+  ov.innerHTML=ageState()!=='1'?vAge():ui.conflict?vConflict():(gate?(ui.booted?vLogin():'<div class="splash"><span class="badge">Startline</span></div>'):(ui.login?vLogin():(ui.paywall?vPaywall():'')));
+  if(ageState()==='1'&&(gate?ui.booted:ui.login)&&!ui.conflict)mountAuth();
   var ap=$('#app');if(ap)ap.classList.toggle('touring',showTour()&&ageState()==='1'&&!ui.login&&!ui.paywall&&!ui.conflict);
   if(ui.fx&&animOK()){scr.classList.remove('enter');void scr.offsetWidth;scr.classList.add('enter');}
   ui.fx=false;
@@ -943,10 +959,10 @@ function act(a,d){
     case 'paywallclose':case 'paywallbg':ui.paywall=null;ui.payErr='';render();break;
     case 'subscribe':if(!ENT.signedIn){ui.afterLogin='checkout';ui.login=true;ui.loginErr='';render();}else startCheckout();break;
     case 'login':ui.afterLogin='';ui.login=true;ui.loginErr='';render();break;
-    case 'loginbg':case 'loginclose':ui.login=false;ui.afterLogin='';render();break;
+    case 'loginbg':case 'loginclose':if(!ENT.signedIn)break;ui.login=false;ui.afterLogin='';render();break;
     case 'demologin':onDemo();break;
     case 'ageok':checkAge();break;
-    case 'signout':setTok('');ENT.signedIn=false;ENT.pro=false;ENT.uid='';setLastPro(false);ui.confirmDelAcct=false;render();toast('Signed out. Your tasks stay on this device.');break;
+    case 'signout':doSignOut();break;
     case 'useCloud':resolveConflict(true);break;
     case 'keepLocal':resolveConflict(false);break;
     case 'deleteacct':ui.confirmDelAcct=true;render();break;
@@ -984,7 +1000,7 @@ document.addEventListener('input',function(e){
   else if(el.id==='evDate'&&ui.raceForm&&ui.raceForm.event){ui.raceForm.event.date=el.value;}
   else if(el.id==='demoName'){ui.demoName=el.value;}
 });
-document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!ui.conflict){if(ui.login){ui.login=false;ui.afterLogin='';render();}else if(ui.paywall){ui.paywall=null;ui.payErr='';render();}}
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!ui.conflict&&ENT.signedIn){if(ui.login){ui.login=false;ui.afterLogin='';render();}else if(ui.paywall){ui.paywall=null;ui.payErr='';render();}}
   if(e.key==='Enter'&&e.target&&e.target.id==='demoName'){e.preventDefault();act('demologin',{});}});
 document.addEventListener('change',function(e){if(e.target.id==='fTask'){ui.focusTask=e.target.value;ui.len=null;render();}});
 document.addEventListener('submit',function(e){
