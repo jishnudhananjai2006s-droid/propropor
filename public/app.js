@@ -42,7 +42,7 @@ function fresh(){return {v:1,stage:null,tasks:[],sessions:[],parked:[],races:[],
 function load(){try{var r=localStorage.getItem(KEY);if(r){var o=JSON.parse(r);if(o&&o.v===1&&Array.isArray(o.tasks))return o;}}catch(e){}return null;}
 function save(nosync){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}if(!nosync)scheduleSync();}
 var S=load();
-var ui={ageErr:'',login:false,afterLogin:'',pendingPaid:'',loginErr:'',demoName:'',conflict:null,confirmDelAcct:false,paywall:null,busy:false,payErr:'',confirmCancel:false,tab:'today',len:null,focusTask:'',raceOpen:null,raceForm:null,confirmErase:false,confirmDel:false,draft:{title:'',step:'',when:'',min:0,edited:false},reset:false,abort:null,rv:{},gOpen:'',addOpen:false,tf:null,tourTaskId:'',crewOpen:false,lapOpen:{},tourOn:null,tourStep:0,bErr:'',welcomeOff:''};
+var ui={ageErr:'',login:false,afterLogin:'',pendingPaid:'',loginErr:'',demoName:'',conflict:null,confirmDelAcct:false,paywall:null,busy:false,payErr:'',confirmCancel:false,tab:'today',len:null,focusTask:'',raceOpen:null,raceForm:null,confirmErase:false,confirmDel:false,draft:{title:'',step:'',when:'',min:0,edited:false},reset:false,abort:null,rv:{},gOpen:'',fx:false,spotT:0,addOpen:false,tf:null,tourTaskId:'',crewOpen:false,lapOpen:{},tourOn:null,tourStep:0,bErr:'',welcomeOff:''};
 
 /* ---------- plan and billing ---------- */
 var ENT={nextFreeAt:0,aiFree:false,pro:false,signedIn:false,uid:'',cfg:{provider:'demo',testMode:false,priceLabel:'',trialDays:0,auth:{mode:'demo',googleClientId:''},ai:{ready:false}}};
@@ -745,9 +745,12 @@ function render(){
   scr.innerHTML=(S.demo?banner():'')+views[ui.tab]();
   scr.scrollTop=top;renderTabs();
   var ov=$('#overlay');if(!ov){ov=document.createElement('div');ov.id='overlay';$('#app').appendChild(ov);}
-  ov.innerHTML=ageState()!=='1'?vAge():ui.conflict?vConflict():(ui.login?vLogin():(ui.paywall?vPaywall():(showTour()?vTour():'')));
+  ov.innerHTML=ageState()!=='1'?vAge():ui.conflict?vConflict():(ui.login?vLogin():(ui.paywall?vPaywall():''));
   if(ageState()==='1'&&ui.login&&!ui.conflict)mountAuth();
   var ap=$('#app');if(ap)ap.classList.toggle('touring',showTour()&&ageState()==='1'&&!ui.login&&!ui.paywall&&!ui.conflict);
+  if(ui.fx&&animOK()){scr.classList.remove('enter');void scr.offsetWidth;scr.classList.add('enter');}
+  ui.fx=false;
+  tourPaint();
   tourApply();
 }
 
@@ -864,7 +867,7 @@ async function buildRace(basic,note0){
 function act(a,d){
   var T=S.timer;
   switch(a){
-    case 'tab':ui.crewOpen=false;ui.tab=d.v;ui.reset=true;ui.confirmErase=false;ui.confirmDel=false;render();if(d.v==='race')buddyPing(false,true);break;
+    case 'tab':ui.fx=true;ui.crewOpen=false;ui.tab=d.v;ui.reset=true;ui.confirmErase=false;ui.confirmDel=false;render();if(d.v==='race')buddyPing(false,true);break;
     case 'stage':S.stage=d.v;save();render();break;
     case 'toggle':{var t=taskById(d.id);if(!t)break;if(t.done){t.done=null;save();render();}else{completeTask(d.id);render();toast(winMsg());}break;}
     case 'start2':startSprint(d.id,2);break;
@@ -1322,24 +1325,60 @@ function tourGo(n){
   n=Math.max(0,Math.min(TOUR.length-1,n));
   ui.tourStep=n;var st=TOUR[n];
   if(st.tab&&ui.tab!==st.tab){ui.tab=st.tab;}
-  ui.crewOpen=false;ui.raceOpen=null;ui.raceForm=null;ui.addOpen=(st.id==='add');ui.reset=true;render();
+  ui.crewOpen=false;ui.raceOpen=null;ui.raceForm=null;ui.addOpen=(st.id==='add');ui.reset=true;ui.fx=true;render();
+}
+function animOK(){try{return !!window.matchMedia&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(e){return false;}}
+function placeSpot(){
+  var wrap=$('#spotwrap'),sp=$('#spot'),app=$('#app');if(!wrap||!sp||!app)return;
+  var st=TOUR[ui.tourStep],el=showTour()&&st&&st.sel?$(st.sel):null;
+  if(!el||!el.getBoundingClientRect){sp.style.opacity='0';return;}
+  var r=el.getBoundingClientRect(),a=app.getBoundingClientRect(),pad=6;
+  sp.style.top=(r.top-a.top-pad)+'px';sp.style.left=(r.left-a.left-pad)+'px';sp.style.width=(r.width+pad*2)+'px';sp.style.height=(r.height+pad*2)+'px';sp.style.opacity='1';
 }
 function tourApply(){
   var old=document.querySelectorAll('.tour-hl');for(var i=0;i<old.length;i++)old[i].classList.remove('tour-hl');
-  if(!showTour())return;
-  var st=TOUR[ui.tourStep];if(!st||!st.sel)return;
-  var el=$(st.sel);if(!el)return;
-  el.classList.add('tour-hl');
-  try{var scr=$('#screen'),card=$('.tourcard');if(scr&&card&&el.getBoundingClientRect){var r=el.getBoundingClientRect(),sr=scr.getBoundingClientRect(),lim=card.getBoundingClientRect().top-12;if(r.top<sr.top+10||r.bottom>lim)scr.scrollTop+=r.top-sr.top-80;}}catch(e){}
+  var app=$('#app');
+  if(!showTour()||!app){var w0=$('#spotwrap');if(w0)w0.remove();return;}
+  if(!$('#spotwrap')){var w=document.createElement('div');w.id='spotwrap';w.className='spotwrap';w.innerHTML='<div id="spot"></div>';app.appendChild(w);}
+  var st=TOUR[ui.tourStep],el=st&&st.sel?$(st.sel):null;
+  if(el)el.classList.add('tour-hl');
+  try{
+    var scr=$('#screen'),card=$('.tourcard');
+    if(el&&scr&&card&&el.getBoundingClientRect){
+      var r=el.getBoundingClientRect(),sr=scr.getBoundingClientRect(),lim=card.getBoundingClientRect().top-12;
+      if(r.top<sr.top+10||r.bottom>lim){var to=scr.scrollTop+r.top-sr.top-80;if(animOK()&&scr.scrollTo)scr.scrollTo({top:to,behavior:'smooth'});else scr.scrollTop=to;}
+    }
+  }catch(e){}
+  placeSpot();
+  if(animOK()){clearTimeout(ui.spotT);ui.spotT=setTimeout(placeSpot,520);}
 }
-function vTour(){
+function tourInner(){
   var n=Math.min(ui.tourStep,TOUR.length-1),st=TOUR[n],last=n===TOUR.length-1,waiting=st.wait==='task'&&!hasOwnTask();
-  return '<div class="tour-wrap"><div class="tourcard" role="dialog" aria-label="How Startline works"><div class="dots" aria-hidden="true">'+TOUR.map(function(x,i){return '<i'+(i===n?' class="on"':'')+'></i>';}).join('')+'</div>'+
-    '<div class="eyebrow">Step '+(n+1)+' of '+TOUR.length+'</div><h2 style="font-size:20px">'+esc(st.t)+'</h2><p>'+esc(st.b)+'</p>'+(st.tip?'<p class="note">'+esc(st.tip)+'</p>':'')+
+  return '<div class="eyebrow">Step '+(n+1)+' of '+TOUR.length+'</div><h2 style="font-size:20px">'+esc(st.t)+'</h2><p>'+esc(st.b)+'</p>'+(st.tip?'<p class="note">'+esc(st.tip)+'</p>':'')+
     '<div class="row">'+(n?'<button type="button" class="btn small" data-action="tourback">Back</button>':'')+'<button type="button" class="btn small primary" style="flex:1" data-action="'+(last?'tourdone':'tournext')+'">'+(last?'Start using Startline':(waiting?'Skip this step':'Next'))+'</button></div>'+
-    (last?'':'<button type="button" class="btn ghost small" data-action="tourdone" style="align-self:center;min-height:32px">Skip the tour</button>')+'</div></div>';
+    (last?'':'<button type="button" class="btn ghost small" data-action="tourdone" style="align-self:center;min-height:32px">Skip the tour</button>');
+}
+function tourKey(){var st=TOUR[ui.tourStep];return ui.tourStep+'|'+((st&&st.wait==='task'&&!hasOwnTask())?1:0);}
+function tourPaint(){
+  var show=showTour()&&ageState()==='1'&&!ui.login&&!ui.paywall&&!ui.conflict,box=$('#tourbox'),app=$('#app');
+  if(!show||!app){if(box)box.remove();return;}
+  var pct=Math.round((ui.tourStep+1)/TOUR.length*100);
+  if(!box){
+    box=document.createElement('div');box.id='tourbox';box.className='tour-wrap';
+    box.innerHTML='<div class="tourcard in" role="dialog" aria-label="How Startline works"><div class="tprog" aria-hidden="true"><i style="width:'+pct+'%"></i></div><div class="tbody">'+tourInner()+'</div></div>';
+    app.appendChild(box);box.setAttribute('data-k',tourKey());return;
+  }
+  var k=tourKey(),card=box.firstChild,bar=card.querySelector('.tprog i'),body=card.querySelector('.tbody');
+  if(bar)bar.style.width=pct+'%';
+  if(box.getAttribute('data-k')===k)return;
+  box.setAttribute('data-k',k);
+  if(!animOK()){body.innerHTML=tourInner();return;}
+  body.classList.add('out');
+  setTimeout(function(){body.innerHTML=tourInner();body.classList.remove('out');body.classList.remove('in');void body.offsetWidth;body.classList.add('in');},170);
 }
 
+document.addEventListener('scroll',function(e){if(e.target&&e.target.id==='screen'&&showTour())placeSpot();},true);
+window.addEventListener('resize',function(){if(showTour())placeSpot();});
 /* ---------- start ---------- */
 if('serviceWorker' in navigator){try{navigator.serviceWorker.register('/sw.js').catch(function(){});}catch(e){}}
 render();

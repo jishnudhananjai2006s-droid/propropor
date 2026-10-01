@@ -169,11 +169,28 @@ form .fold summary::after{content:"+";margin-left:2px}
 .dots i.on{background:var(--accent);width:22px;border-radius:4px}
 .lapsum{flex-direction:row;justify-content:space-between;align-items:center}
 
-.tour-wrap{position:absolute;inset:0;z-index:9;display:flex;align-items:flex-end;padding:0 12px 70px;pointer-events:none}
-.tourcard{pointer-events:auto;width:100%;background:var(--surface);border:1px solid var(--ink);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+.tour-wrap{position:absolute;inset:0;z-index:9;display:flex;align-items:flex-end;padding:0 12px 76px;pointer-events:none}
+.tourcard{pointer-events:auto;width:100%;background:var(--surface);border:1px solid var(--ink);border-radius:18px;padding:0 18px 16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 10px 34px rgba(0,0,0,.28);overflow:hidden}
+.tbody{display:flex;flex-direction:column;gap:10px}
 .tourcard p{line-height:1.5}
-.tour-hl{box-shadow:0 0 0 4px var(--bg),0 0 0 7px var(--accent)!important;border-radius:10px;position:relative;z-index:2}
-
+.tprog{height:4px;background:var(--track);margin:0 -18px}
+.tprog i{display:block;height:100%;background:var(--accent);width:0}
+.spotwrap{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:8}
+#spot{position:absolute;border-radius:16px;opacity:0;box-shadow:0 0 0 3px var(--accent),0 0 0 9999px rgba(8,12,10,.45)}
+@media (prefers-reduced-motion:no-preference){
+  #spot{transition:top .55s cubic-bezier(.3,.7,.2,1),left .55s cubic-bezier(.3,.7,.2,1),width .55s cubic-bezier(.3,.7,.2,1),height .55s cubic-bezier(.3,.7,.2,1),opacity .35s ease}
+  .tprog i{transition:width .5s cubic-bezier(.3,.7,.2,1)}
+  .tourcard.in{animation:tin .4s cubic-bezier(.2,.8,.2,1) both}
+  .tbody{transition:opacity .17s ease,transform .17s ease}
+  .tbody.out{opacity:0;transform:translateY(10px)}
+  .tbody.in{animation:tin .38s cubic-bezier(.2,.8,.2,1) both}
+  .screen.enter>*{animation:rise .42s cubic-bezier(.2,.8,.2,1) both}
+  .screen.enter>*:nth-child(2){animation-delay:.04s}.screen.enter>*:nth-child(3){animation-delay:.08s}
+  .screen.enter>*:nth-child(4){animation-delay:.12s}.screen.enter>*:nth-child(5){animation-delay:.16s}.screen.enter>*:nth-child(n+6){animation-delay:.2s}
+  @keyframes tin{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+  @keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+}
+.tour-hl{position:relative}
 .touring .screen{padding-bottom:360px}
 
 /* Stoic look: warm stone and basalt, serif headings, square corners. Optional; chosen in Report > Settings. */
