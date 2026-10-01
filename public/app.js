@@ -14,12 +14,12 @@ function fmtDur(ms){var m=ms/MIN;if(m<1)return '<1 min';if(m<100)return Math.rou
 function fmtClock(ms){var s=Math.max(0,Math.ceil(ms/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
 function clip(v,n){return String(v==null?'':v).replace(/\s+/g,' ').trim().slice(0,n);}
 
-function skinNow(){try{return localStorage.getItem('startline.skin')==='classic'?'classic':'stoic';}catch(e){return 'stoic';}}
+function skinNow(){try{var k=localStorage.getItem('startline.skin');return k==='classic'||k==='stoic'?k:'fresh';}catch(e){return 'fresh';}}
 function tn(a,b){return skinNow()==='stoic'?b:a;}
 function applySkin(){
   var k=skinNow(),m=document.querySelector('meta[name="theme-color"]');
-  if(k==='stoic')document.documentElement.setAttribute('data-skin','stoic');else document.documentElement.removeAttribute('data-skin');
-  if(m)m.setAttribute('content',k==='stoic'?'#E9E4DA':'#F2F2F2');
+  if(k!=='classic')document.documentElement.setAttribute('data-skin',k);else document.documentElement.removeAttribute('data-skin');
+  if(m)m.setAttribute('content',k==='stoic'?'#E9E4DA':(k==='fresh'?'#F3F5F0':'#F2F2F2'));
 }
 applySkin();
 var MAXIMS=[
@@ -42,7 +42,7 @@ function fresh(){return {v:1,stage:null,tasks:[],sessions:[],parked:[],races:[],
 function load(){try{var r=localStorage.getItem(KEY);if(r){var o=JSON.parse(r);if(o&&o.v===1&&Array.isArray(o.tasks))return o;}}catch(e){}return null;}
 function save(nosync){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}if(!nosync)scheduleSync();}
 var S=load();
-var ui={ageErr:'',login:false,afterLogin:'',pendingPaid:'',loginErr:'',demoName:'',conflict:null,confirmDelAcct:false,paywall:null,busy:false,payErr:'',confirmCancel:false,tab:'today',len:null,focusTask:'',raceOpen:null,raceForm:null,confirmErase:false,confirmDel:false,draft:{title:'',step:'',when:'',edited:false},reset:false,abort:null,rv:{},gOpen:'',crewOpen:false,lapOpen:{},tourOn:null,tourStep:0,bErr:'',welcomeOff:''};
+var ui={ageErr:'',login:false,afterLogin:'',pendingPaid:'',loginErr:'',demoName:'',conflict:null,confirmDelAcct:false,paywall:null,busy:false,payErr:'',confirmCancel:false,tab:'today',len:null,focusTask:'',raceOpen:null,raceForm:null,confirmErase:false,confirmDel:false,draft:{title:'',step:'',when:'',min:0,edited:false},reset:false,abort:null,rv:{},gOpen:'',addOpen:false,tf:null,tourTaskId:'',crewOpen:false,lapOpen:{},tourOn:null,tourStep:0,bErr:'',welcomeOff:''};
 
 /* ---------- plan and billing ---------- */
 var ENT={nextFreeAt:0,aiFree:false,pro:false,signedIn:false,uid:'',cfg:{provider:'demo',testMode:false,priceLabel:'',trialDays:0,auth:{mode:'demo',googleClientId:''},ai:{ready:false}}};
@@ -210,7 +210,7 @@ async function eraseAll(){
     catch(e){toast('Could not erase your account copy, so nothing was erased. Try again.');return;}
   }
   try{localStorage.removeItem(KEY);}catch(e){}
-  S=fresh();ui.tab='today';ui.raceOpen=null;ui.raceForm=null;ui.confirmErase=false;ui.draft={title:'',step:'',when:'',edited:false};ui.reset=true;
+  S=fresh();ui.tab='today';ui.raceOpen=null;ui.raceForm=null;ui.confirmErase=false;ui.draft={title:'',step:'',when:'',min:0,edited:false};ui.reset=true;
   save(true);render();toast(ENT.signedIn?'Erased from this device and your account.':'All data erased from this device.');
 }
 async function deleteAccount(){
@@ -459,43 +459,65 @@ function chip(label,on,action,v,extra){return '<button type="button" class="chip
 function banner(){
   return '<div class="banner"><span>Example data is showing so you can see how it works. Anything you add stays yours.</span><button type="button" class="btn small" data-action="cleardemo">Clear examples</button></div>';
 }
+function greeting(){var h=new Date().getHours();return h<12?'Good morning':(h<17?'Good afternoon':'Good evening');}
+function ringCard(wins,open,sess,mins){
+  var tot=wins.length+open.length,pct=tot?Math.round(wins.length/tot*100):0,C=276.46,o=stats();
+  return '<section class="card hero2"><div class="eyebrow" style="color:inherit;opacity:.75">Today’s progress</div><div class="herorow">'+
+    '<div class="ring" role="img" aria-label="'+pct+' percent of today\'s tasks done"><svg viewBox="0 0 100 100" width="104" height="104"><circle cx="50" cy="50" r="44" fill="none" stroke="currentColor" stroke-opacity=".2" stroke-width="9"/><circle cx="50" cy="50" r="44" fill="none" stroke="var(--ring)" stroke-width="9" stroke-linecap="round" stroke-dasharray="'+(C*pct/100).toFixed(1)+' '+C+'" transform="rotate(-90 50 50)"/></svg><b>'+pct+'%</b></div>'+
+    '<ul class="hstats"><li><span>Total tasks</span><b>'+tot+'</b></li><li><span>Completed</span><b>'+wins.length+'</b></li><li><span>Pending</span><b>'+open.length+'</b></li></ul></div>'+
+    '<div class="herofoot"><span>'+mins+' min focus today · '+o.streak+'-day streak</span><button type="button" class="linkbtn" data-action="sharecard">Share</button></div></section>';
+}
+function weekStrip(){
+  var now=Date.now(),sod=startOfDay(now),dow=(new Date(sod).getDay()+6)%7,mon=addDays(sod,-dow),done={},L='MTWTFSS',h='<div class="wk" role="list" aria-label="This week">',i;
+  S.tasks.forEach(function(t){if(t.done)done[startOfDay(t.done)]=1;});S.sessions.forEach(function(x){done[startOfDay(x.start)]=1;});
+  for(i=0;i<7;i++){var d=addDays(mon,i),cls=(d===sod?' now':'')+(done[d]?' did':'')+(inPause(d)?' rest':'');
+    h+='<div class="d'+cls+'" role="listitem" aria-label="'+new Date(d).toLocaleDateString(undefined,{weekday:'long',day:'numeric'})+(done[d]?', active':'')+'"><span>'+L[i]+'</span><b>'+new Date(d).getDate()+'</b><i></i></div>';}
+  return h+'</div>';
+}
+function taskCard(t){
+  var meta=(t.min?'<span class="pill">'+t.min+' min</span>':'')+(t.when?'<span class="pill">'+esc(t.when)+'</span>':'')+(t.started?'<span class="pill on">Started</span>':'');
+  return '<li class="card tcard"><button type="button" class="check" data-action="toggle" data-id="'+t.id+'" aria-label="Mark done: '+esc(t.title)+'"></button>'+
+    '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="s">First step: '+esc(t.step)+'</div>'+(meta?'<div class="meta">'+meta+'</div>':'')+'</div>'+
+    '<div class="acts">'+(t.min>2?'<button type="button" class="btn small primary"'+(ui.tourTaskId===t.id?' data-tour="start"':'')+' data-action="startt" data-id="'+t.id+'">Start '+taskLen(t)+' min</button><button type="button" class="btn small" data-action="start2" data-id="'+t.id+'">Just 2 min</button>':'<button type="button" class="btn small primary"'+(ui.tourTaskId===t.id?' data-tour="start"':'')+' data-action="start2" data-id="'+t.id+'">Start 2 min</button>')+
+    '<button type="button" class="btn small ghost" data-action="remove" data-id="'+t.id+'">Remove</button></div></li>';
+}
+function addForm(ph){
+  var d=ui.draft,mins=[0,15,25,45];if(defLen()>2&&mins.indexOf(defLen())<0)mins.push(defLen());mins.sort(function(a,b){return a-b;});
+  return '<form class="card addform" data-form="add" autocomplete="off"><div class="wins-head" style="margin-bottom:4px"><h2>New task</h2><button type="button" class="btn ghost small" data-action="addtoggle">Close</button></div>'+
+    '<label class="lbl" for="tTitle">What have you been putting off?</label><input id="tTitle" type="text" maxlength="90" placeholder="'+esc(ph)+'" value="'+esc(d.title)+'">'+
+    '<div class="lbl">How long will you give it?</div><div class="chips">'+mins.map(function(m){return chip(m?m+' min':'2 min starter',(d.min||0)===m,'dmin',m);}).join('')+'</div>'+
+    '<details class="fold"'+(d.edited||d.when?' open':'')+'><summary>Add details (optional)</summary>'+
+    '<label class="lbl" for="tStep">First step, under 2 minutes</label><input id="tStep" type="text" maxlength="140" placeholder="Filled in for you. Change it if you like." value="'+esc(d.step)+'">'+
+    '<label class="lbl" for="tWhen">When and where will you start?</label><input id="tWhen" type="text" maxlength="80" placeholder="e.g. After dinner, at my desk" value="'+esc(d.when)+'"></details>'+
+    '<div style="margin-top:18px"><button class="btn primary big" type="submit">Create task</button></div></form>';
+}
 function vToday(){
-  var now=Date.now(),sod=startOfDay(now),open=openTasks();
+  var now=Date.now(),sod=startOfDay(now),open=openTasks().filter(function(t){return !(t.demo&&t.created<sod-DAY);}).sort(function(a,b){return (!!a.demo-!!b.demo)||(b.created-a.created);});
   var wins=S.tasks.filter(function(t){return t.done&&t.done>=sod;}).sort(function(a,b){return b.done-a.done;});
   var sess=S.sessions.filter(function(s){return s.start>=sod;});
   var mins=sess.reduce(function(a,s){return a+s.min;},0);
-  var tourTaskId=(open.find(function(t){return !t.demo;})||{}).id;
+  ui.tourTaskId=(open.find(function(t){return !t.demo;})||{}).id;
   var ph={school:'Revise Unit 4 notes',college:'Start the assignment',work:'Update my résumé'}[S.stage]||'Start the assignment';
-  var h='<div class="head"><div class="eyebrow">Startline · '+esc(new Date().toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}))+'</div><h1>Today</h1></div>';
+  var todo=open.filter(function(t){return !t.started;}),prog=open.filter(function(t){return t.started;});
+  var f=ui.tf||(todo.length?'todo':(prog.length?'prog':'done'));
+  var h='<div class="topbar"><div class="head"><div class="eyebrow">'+esc(new Date().toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}))+'</div><h1>'+greeting()+'</h1><p class="sub">'+esc(tn('What will you begin today?','Choose one thing. Begin.'))+'</p></div>'+
+    '<button type="button" class="roundbtn" data-action="addtoggle" aria-label="Add a task" aria-expanded="'+(ui.addOpen?'true':'false')+'">'+(ui.addOpen?'×':'+')+'</button></div>';
+  h+=maximCard();
+  h+=welcomeBack()+seasonCard();
+  h+=ringCard(wins,open,sess,mins)+weekStrip();
   if(!S.stage){
     h+='<section class="card"><h2>One quick question</h2><p class="sub" style="margin:6px 0 12px">What are you working towards? It sets your default sprint length.</p><div class="chips">'+
       chip('Exam prep',false,'stage','school')+chip('College',false,'stage','college')+chip('Job or internship',false,'stage','work')+'</div></section>';
   }
-  h+=maximCard();
   if(S.stage&&!S.style)h+='<section class="card"><h2>How do you like to work?</h2><p class="sub" style="margin:6px 0 14px">Your timers and breaks will follow this. You can change it later in Report.</p><div class="chips">'+STYLES.map(function(x){return chip(esc(x.name)+' · '+x.work+'/'+x.brk,false,'style',x.id);}).join('')+'</div><p class="note" style="margin-top:12px">Work minutes / break minutes. Pomodoro is 25/5.</p></section>';
-  h+=welcomeBack()+seasonCard();
-  h+='<form class="card" data-form="add" autocomplete="off"><label class="lbl" for="tTitle">What have you been putting off?</label>'+
-    '<input id="tTitle" type="text" maxlength="90" placeholder="'+esc(ph)+'" value="'+esc(ui.draft.title)+'">'+
-    '<details class="fold"'+(ui.draft.edited||ui.draft.when?' open':'')+'><summary>Add details (optional)</summary>'+
-    '<label class="lbl" for="tStep">First step, under 2 minutes</label>'+
-    '<input id="tStep" type="text" maxlength="140" placeholder="Filled in for you. Change it if you like." value="'+esc(ui.draft.step)+'">'+
-    '<label class="lbl" for="tWhen">When and where will you start?</label><input id="tWhen" type="text" maxlength="80" placeholder="e.g. After dinner, at my desk" value="'+esc(ui.draft.when)+'"></details>'+
-    '<div style="margin-top:14px"><button class="btn primary big" type="submit">Add task</button></div></form>';
-  if(open.length)h+='<section class="card"><div class="wins-head"><h2>Up next</h2><span class="tag">'+open.length+' open</span></div><ul class="list">'+open.map(function(t){
-    return '<li class="item"><button type="button" class="check" data-action="toggle" data-id="'+t.id+'" aria-label="Mark done: '+esc(t.title)+'"></button>'+
-      '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="s">First step: '+esc(t.step)+'</div>'+(t.when?'<div class="s mono">Plan: '+esc(t.when)+'</div>':'')+'</div>'+
-      '<div class="acts">'+(t.min>2?'<button type="button" class="btn small primary"'+(tourTaskId===t.id?' data-tour="start"':'')+' data-action="startt" data-id="'+t.id+'">Start '+taskLen(t)+' min</button><button type="button" class="btn small" data-action="start2" data-id="'+t.id+'">Just 2 min</button>':'<button type="button" class="btn small primary"'+(tourTaskId===t.id?' data-tour="start"':'')+' data-action="start2" data-id="'+t.id+'">Start 2 min</button>')+
-      '<button type="button" class="btn small ghost" data-action="remove" data-id="'+t.id+'">Remove</button></div></li>';
-  }).join('')+'</ul>';
-  if(open.length)h+='</section>';
-  if(wins.length)h+='<section class="card"><div class="wins-head"><h2>Today’s wins</h2><span class="tag">'+wins.length+' done · '+sess.length+' sprint'+(sess.length===1?'':'s')+' · '+mins+' min</span></div>';
-  if(wins.length)h+='<ul class="list">'+wins.map(function(t){
-    return '<li class="item dn"><button type="button" class="check on" data-action="toggle" data-id="'+t.id+'" aria-label="Undo: '+esc(t.title)+'"></button>'+
-      '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="s mono">'+new Date(t.done).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})+'</div></div></li>';
-  }).join('')+'</ul>';
-  if(wins.length)h+='</section>';
-  if(!open.length&&!wins.length)h+='<section class="card"><h2>Your day starts here</h2><p class="sub" style="margin:6px 0 12px">'+tn('Add the one thing you keep putting off above. Two minutes is enough to begin.','Choose the one thing you have been avoiding. Begin with two minutes.')+'</p><button type="button" class="btn small" data-action="tour">Take the 1-minute tour</button></section>';
-  return h+weekCard();
+  if(ui.addOpen||(!S.tasks.length))h+=addForm(ph);
+  h+='<div class="seg3" role="tablist" aria-label="Task filter">'+[['todo','To do',todo.length],['prog','In progress',prog.length],['done','Done',wins.length]].map(function(x){return '<button type="button" role="tab" class="fpill" aria-pressed="'+(f===x[0]?'true':'false')+'" data-action="tf" data-v="'+x[0]+'"><b>'+x[2]+'</b> '+x[1]+'</button>';}).join('')+'</div>';
+  var list=f==='todo'?todo:(f==='prog'?prog:[]);
+  if(f==='done'){
+    h+=wins.length?'<ul class="tlist">'+wins.map(function(t){return '<li class="card tcard dn"><button type="button" class="check on" data-action="toggle" data-id="'+t.id+'" aria-label="Undo: '+esc(t.title)+'"></button><div class="body"><div class="t">'+esc(t.title)+'</div><div class="s mono">'+new Date(t.done).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})+'</div></div></li>';}).join('')+'</ul>':'<p class="empty">Wins show up here. Even a 2-minute start counts.</p>';
+  }else if(list.length)h+='<ul class="tlist">'+list.map(taskCard).join('')+'</ul>';
+  else h+='<p class="empty">'+(f==='todo'?tn('Nothing waiting. Tap + to add the one thing you keep putting off.','Nothing waits here. Tap + and name the one thing you have been avoiding.'):'Nothing in progress. Start a task and it shows up here.')+'</p>';
+  return h;
 }
 function parkCard(){
   return '<section class="card"><h2>Parking lot</h2><p class="sub" style="margin:4px 0 12px;font-size:13px">A thought pops up? Park it here and get back to work.</p>'+
@@ -709,7 +731,7 @@ function vReport(){
     '<div class="metric"><div class="k">Felt focus<span class="n">Your own rating, last 7 days</span></div><div class="val">'+(o.feel==null?'–':o.feel.toFixed(1)+' / 5')+'</div></div></section>';
   h+='<details class="card fold"><summary>Settings and account</summary>'+accountRow()+planRow()+'<div class="lbl">What you are working towards</div><div class="chips">'+
     chip('Exam prep',S.stage==='school','stage','school')+chip('College',S.stage==='college','stage','college')+chip('Job or internship',S.stage==='work','stage','work')+'</div>'+
-    '<div class="lbl">Look</div><div class="chips">'+chip('Classic',skinNow()==='classic','skin','classic')+chip('Stoic',skinNow()==='stoic','skin','stoic')+'</div><div class="lbl">How you like to work</div><div class="chips">'+STYLES.map(function(x){return chip(esc(x.name)+' · '+x.work+'/'+x.brk,S.style===x.id,'style',x.id);}).join('')+'</div>'+(styleObj()&&styleObj().brk?'<div class="lbl">Longer break after every 4 sprints</div><div class="chips">'+[[0,'Off'],[15,'15 min'],[20,'20 min'],[30,'30 min']].map(function(x){return chip(x[1],(S.longBrk||0)===x[0],'longbrk',x[0]);}).join('')+'</div>':'')+remindRow()+'<div class="lbl">Break and help</div><div class="row">'+(isPaused()?'<button type="button" class="btn small primary" data-action="resumeplan">Resume my plans</button>':'<button type="button" class="btn small" data-action="pauseplan">Pause my plans</button>')+'<button type="button" class="btn small" data-action="tour">Replay the tour</button></div><p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
+    '<div class="lbl">Look</div><div class="chips">'+chip('Fresh',skinNow()==='fresh','skin','fresh')+chip('Stoic',skinNow()==='stoic','skin','stoic')+chip('Classic',skinNow()==='classic','skin','classic')+'</div><div class="lbl">How you like to work</div><div class="chips">'+STYLES.map(function(x){return chip(esc(x.name)+' · '+x.work+'/'+x.brk,S.style===x.id,'style',x.id);}).join('')+'</div>'+(styleObj()&&styleObj().brk?'<div class="lbl">Longer break after every 4 sprints</div><div class="chips">'+[[0,'Off'],[15,'15 min'],[20,'20 min'],[30,'30 min']].map(function(x){return chip(x[1],(S.longBrk||0)===x[0],'longbrk',x[0]);}).join('')+'</div>':'')+remindRow()+'<div class="lbl">Break and help</div><div class="row">'+(isPaused()?'<button type="button" class="btn small primary" data-action="resumeplan">Resume my plans</button>':'<button type="button" class="btn small" data-action="pauseplan">Pause my plans</button>')+'<button type="button" class="btn small" data-action="tour">Replay the tour</button></div><p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
     '<div style="margin-top:12px">'+(ui.confirmErase?'<div class="row"><span class="note">'+(ENT.signedIn?'Erase your progress here and in your account?':'Erase everything on this device?')+'</span><button type="button" class="btn small primary" data-action="eraseyes">Yes, erase</button><button type="button" class="btn small" data-action="eraseno">Keep it</button></div>':'<button type="button" class="btn small" data-action="erase">Erase all my data</button>')+'</div>'+deleteAcctRow()+'</details>';
   return h;
 }
@@ -848,6 +870,9 @@ function act(a,d){
     case 'start2':startSprint(d.id,2);break;
     case 'startt':startSprint(d.id,taskLen(taskById(d.id)));break;
     case 'skin':try{localStorage.setItem('startline.skin',d.v);}catch(e){}applySkin();render();break;
+    case 'addtoggle':ui.addOpen=!ui.addOpen;ui.tab='today';ui.reset=true;render();if(ui.addOpen){var ti=$('#tTitle');if(ti)ti.focus();}break;
+    case 'tf':ui.tf=d.v;render();break;
+    case 'dmin':ui.draft.min=Number(d.v);render();break;
     case 'style':S.style=d.v;if(d.v==='pomo'&&S.longBrk===undefined)S.longBrk=15;ui.len=null;save();render();toast('Timers now follow your style.');break;
     case 'brk':if(d.id==='long')S.cycle={n:0,at:Date.now()};startBreak(Number(d.v));break;
     case 'longbrk':S.longBrk=Number(d.v);save();render();break;
@@ -965,8 +990,8 @@ document.addEventListener('submit',function(e){
     var title=clip($('#tTitle').value,90);
     if(!title){toast('Write the task first.');$('#tTitle').focus();return;}
     var step=clip($('#tStep').value,140)||suggestStep(title);
-    S.tasks.push({id:uid(),title:title,step:step,when:clip($('#tWhen').value,80),created:Date.now(),started:null,done:null});
-    ui.draft={title:'',step:'',when:'',edited:false};save();render();toast(tn('Added. Start with the first step: 2 minutes.','Added. Begin with the first step: two minutes.'));
+    S.tasks.push({id:uid(),title:title,step:step,when:clip($('#tWhen').value,80),min:ui.draft.min>2?ui.draft.min:undefined,created:Date.now(),started:null,done:null});ui.addOpen=false;ui.tf='todo';
+    ui.draft={title:'',step:'',when:'',min:0,edited:false};save();render();toast(tn('Added. Start with the first step: 2 minutes.','Added. Begin with the first step: two minutes.'));
     if(showTour()&&TOUR[ui.tourStep].wait==='task')tourGo(tIdx('start'));
   }else{
     var txt=clip($('#parkIn').value,120);if(!txt)return;
@@ -1297,7 +1322,7 @@ function tourGo(n){
   n=Math.max(0,Math.min(TOUR.length-1,n));
   ui.tourStep=n;var st=TOUR[n];
   if(st.tab&&ui.tab!==st.tab){ui.tab=st.tab;}
-  ui.crewOpen=false;ui.raceOpen=null;ui.raceForm=null;ui.reset=true;render();
+  ui.crewOpen=false;ui.raceOpen=null;ui.raceForm=null;ui.addOpen=(st.id==='add');ui.reset=true;render();
 }
 function tourApply(){
   var old=document.querySelectorAll('.tour-hl');for(var i=0;i<old.length;i++)old[i].classList.remove('tour-hl');
