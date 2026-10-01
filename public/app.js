@@ -345,6 +345,43 @@ var STYLES=[
  {id:'flow',name:'Go until done',d:'no fixed breaks',work:45,brk:0},
  {id:'unsure',name:'Not sure yet',d:'we start you at 15 min',work:15,brk:3}
 ];
+var METHODS=[
+ {id:'pomo',name:'Pomodoro',note:'Short timed rounds with a rest after each. Keeps you fresh.',len:25},
+ {id:'recall',name:'Active recall',note:'Close the notes. Write or say what you remember, then check.',len:25,top:1},
+ {id:'feynman',name:'Explain it simply',note:'Teach it to an imaginary friend. Where you get stuck is what to relearn.',len:20},
+ {id:'spaced',name:'Spaced review',note:'Revisit it after 1 day, 3 days, then 7. Memory sticks.',len:15,top:1},
+ {id:'test',name:'Practice test',note:'Do real questions against the clock, then study each mistake.',len:45,top:1},
+ {id:'mix',name:'Mix topics',note:'Switch between 2 or 3 topics in one session instead of one long block.',len:45},
+ {id:'chunk',name:'Small chunks',note:'Split it into tiny parts. Finish one part before the next.',len:15}
+];
+function methodById(id){return METHODS.find(function(m){return m.id===id;})||null;}
+function methodLine(){
+  var m=ui.method;if(!m)return '';
+  return '<div class="mnote"><b>'+esc(m.name)+'</b> <span>'+esc(m.note)+'</span>'+(m.steps&&m.steps.length?'<ol>'+m.steps.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ol>':'')+'</div>';
+}
+function methodBlock(selT){
+  var key=selT?selT.title:'',ai=ui.mAI&&ui.mAI.key===key?ui.mAI:null;
+  var h='<div class="lbl">Study method <span class="note" style="font-weight:400">(optional)</span></div><div class="chips">'+
+    METHODS.map(function(m){return chip(esc(m.name),!!(ui.method&&ui.method.id===m.id&&!ui.method.ai),'method',m.id);}).join('')+'</div>';
+  if(selT&&ENT.signedIn){
+    if(ui.mBusy)h+='<p class="note" style="margin-top:10px"><span class="spin"></span>Finding the best method for this task...</p>';
+    else if(ai&&ai.err)h+='<p class="note" style="margin-top:10px">'+esc(ai.err)+'</p>';
+    else if(!ai)h+='<button type="button" class="btn small" style="margin-top:10px" data-action="mai">Suggest the best method for this task</button><p class="note" style="margin-top:6px">Only this task\u2019s name is sent to the AI.</p>';
+    else h+='<div class="mnote ai" style="margin-top:10px"><span class="tag">Best for this task</span><div><b>'+esc(ai.m.name)+'</b> <span>'+esc(ai.m.why)+'</span></div><button type="button" class="btn small" data-action="muse" style="margin-top:8px">'+(ui.method&&ui.method.ai?'Using this':'Use this method')+'</button></div>';
+  }
+  return h+methodLine();
+}
+async function suggestMethod(){
+  var t=ui.focusTask?taskById(ui.focusTask):null;if(!t||ui.mBusy)return;
+  var key=t.title;ui.mBusy=true;render();
+  try{
+    var r=S.races.find(function(x){return x.id===t.rid;});
+    var out=await api('/api/method',{task:clip(t.title,120),goal:r?clip(r.goal,100):'',mins:taskLen(t)});
+    var base=methodById(out.method)||METHODS[0];
+    ui.mAI={key:key,m:{id:base.id,name:base.name,note:base.note,why:out.why,steps:out.steps,len:out.minutes||base.len,ai:1}};
+  }catch(e){ui.mAI={key:key,err:e.code==='login_required'?'Sign in to use this.':'The AI could not answer just now. Pick a method yourself.'};}
+  ui.mBusy=false;render();
+}
 function styleObj(){return S.style?STYLES.find(function(x){return x.id===S.style;})||null:null;}
 function defLen(){var st=styleObj();return st?st.work:(S.stage==='school'?15:25);}
 function taskLen(t){
@@ -448,6 +485,8 @@ S.pauses=Array.isArray(S.pauses)?S.pauses:[];S.seen=S.seen||{};S.duty=S.duty&&ty
 function startSprint(taskId,len){
   var now=Date.now(),t=taskId?taskById(taskId):null;
   S.timer={taskId:t?t.id:null,len:len,endAt:now+len*MIN,paused:false,remainMs:len*MIN,began:now,ended:false,sid:null};
+  if(ui.method&&len>2){S.timer.method={name:ui.method.name,note:ui.method.note,steps:ui.method.steps||[]};}
+  ui.method=null;
   if(t&&!t.started)t.started=now;
   save();ui.tab='focus';ui.reset=true;render();buddyPing(true);
   if(showTour()&&TOUR[ui.tourStep].id==='start')tourGo(tIdx('focus'));
@@ -606,6 +645,7 @@ function vFocus(){
       '<section class="card"><label class="lbl" for="fTask">Task</label><select id="fTask">'+
       open.map(function(t){return '<option value="'+t.id+'"'+(t.id===sel?' selected':'')+'>'+esc(t.title)+'</option>';}).join('')+
       '<option value=""'+(sel===''?' selected':'')+'>No task, just focus</option></select>'+
+      methodBlock(selT)+
       '<div class="lbl">Length</div><div class="chips">'+
       lenChips(len).map(function(m){return chip(m===2?'2 min · starter':m+' min',len===m,'setlen',m);}).join('')+'</div>'+
       '<div style="margin-top:16px"><button type="button" class="btn primary big" data-action="startFocus">Start '+len+'-minute sprint</button></div></section>';
@@ -627,6 +667,7 @@ function vFocus(){
   }
   var remain=T.paused?T.remainMs:Math.max(0,T.endAt-Date.now());
   h+='<section class="card">'+(t?'<div class="t" style="font-weight:600;overflow-wrap:anywhere">'+esc(t.title)+'</div><div class="s note" style="margin-top:2px">First step: '+esc(t.step)+'</div>':'<div class="t" style="font-weight:600">'+(T.brk?'Break time. Step away from the screen.':'Free focus')+'</div>')+
+    (T.method&&!T.brk?'<div class="mnote" style="margin-top:10px"><b>'+esc(T.method.name)+'</b> <span>'+esc(T.method.note)+'</span>'+(T.method.steps&&T.method.steps.length?'<ol>'+T.method.steps.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ol>':'')+'</div>':'')+
     '<div class="clock" id="clock" role="timer" aria-label="Time left">'+fmtClock(remain)+'</div>'+
     '<div class="bar"><i id="barFill" style="width:'+((T.len*MIN-remain)/(T.len*MIN)*100)+'%"></i></div>'+
     '<div class="row" style="margin-top:16px">'+(T.paused?'<button type="button" class="btn primary" data-action="resume">Resume</button>':'<button type="button" class="btn" data-action="pause">Pause</button>')+
@@ -939,6 +980,9 @@ function act(a,d){
     case 'brk':if(d.id==='long')S.cycle={n:0,at:Date.now()};startBreak(Number(d.v));break;
     case 'longbrk':S.longBrk=Number(d.v);save();render();break;
     case 'remove':S.tasks=S.tasks.filter(function(x){return x.id!==d.id;});if(S.timer&&S.timer.taskId===d.id)S.timer.taskId=null;S.races.forEach(function(r){r.laps.forEach(function(l){l.steps.forEach(function(s){if(s.taskId===d.id)s.taskId=null;});});});save();render();break;
+    case 'method':{var mm=methodById(d.v);if(!mm)break;ui.method=(ui.method&&ui.method.id===mm.id&&!ui.method.ai)?null:{id:mm.id,name:mm.name,note:mm.note,len:mm.len};if(ui.method&&mm.len)ui.len=mm.len;render();break;}
+    case 'mai':suggestMethod();break;
+    case 'muse':if(ui.mAI&&ui.mAI.m){ui.method=ui.mAI.m;if(ui.method.len)ui.len=Math.min(90,Math.max(5,ui.method.len));render();}break;
     case 'setlen':ui.len=Number(d.v);render();break;
     case 'startFocus':startSprint(ui.focusTask||null,ui.len||defLen());break;
     case 'pause':if(T&&!T.paused){T.remainMs=Math.max(0,T.endAt-Date.now());T.paused=true;save();render();}break;

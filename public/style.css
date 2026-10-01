@@ -299,3 +299,8 @@ form .fold summary::after{content:"+";margin-left:2px}
 .sheet-back.gate{align-items:center;justify-content:center;background:var(--bg,#fff)}
 .sheet-back.gate .sheet{box-shadow:none;max-height:none;border-radius:0;background:transparent}
 .splash{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg,#fff);z-index:10}
+
+.mnote{margin-top:12px;padding:12px 14px;border-radius:14px;background:var(--surface-2);border:1px solid var(--line);font-size:14px;line-height:1.45}
+.mnote b{font-weight:700}.mnote span{color:var(--muted)}
+.mnote ol{margin:8px 0 0;padding-left:20px;color:var(--ink)}
+.mnote.ai{background:var(--accent-soft);border-color:transparent}
