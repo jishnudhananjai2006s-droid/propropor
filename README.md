@@ -55,7 +55,8 @@ Sign-in is optional for free use. It is asked for when the person subscribes, or
 Add these in Replit **Secrets** (padlock icon). `.env.example` lists every name.
 
 Always set:
-- `GOOGLE_CLIENT_ID` : real sign-in (required for live payments)
+- `GOOGLE_CLIENT_ID` : Google sign-in (real sign-in is required for live payments)
+- `BREVO_API_KEY` + `BREVO_SENDER` : email sign-in codes (free on brevo.com; verify the sender address there). Only a one-way hash of the email is stored.
 - `PAYMENTS_PROVIDER` : `razorpay` or `stripe`
 - `TOKEN_SECRET` : long random text. Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
 - `PRICE_LABEL` : the text shown on the paywall, for example `₹149 / month`. It must match the price you create at the provider.
@@ -78,11 +79,12 @@ Stripe accounts for Indian businesses are invite-only, so Razorpay is the practi
 
 ### AI race planner
 
-The planner asks 3 to 5 follow-up questions about the goal, then writes a plan of up to 2 years (up to 12 laps, each with a focus, a weekly rhythm and small steps), plus an honest "is this realistic?" note. Free accounts can start one race every 3 days (`FREE_RACE_COOLDOWN_DAYS`), with at most 4 AI calls a day (`FREE_AI_DAILY_CALLS`). Pro has no waiting. The AI limits are enforced on the server. The 3-day wait on creating a race is also checked in the app. Without an AI key the app uses a basic built-in plan and says so.
+The planner asks 3 to 5 follow-up questions about the goal, then writes a plan of up to 2 years (up to 12 laps, each with a focus, a weekly rhythm and small steps), plus an honest "is this realistic?" note. Free accounts can start one race every 3 days (`FREE_RACE_COOLDOWN_DAYS`), with at most 4 AI calls a day (`FREE_AI_DAILY_CALLS`). Pro has no waiting. The AI limits are enforced on the server. The 3-day wait on creating a race is also checked in the app. There is no built-in fallback plan: if the AI cannot answer, the user is asked to try again and nothing is used up.
 
 Turn it on with one of these Secrets (Render: Environment tab):
 - **Anthropic (paid, cents per plan):** `ANTHROPIC_API_KEY` from console.anthropic.com. It uses a small, low-cost model by default. Change it with `AI_MODEL`.
 - **Google Gemini (has a free tier for some models):** set `AI_PROVIDER=gemini`, `GEMINI_API_KEY` from aistudio.google.com, and `AI_MODEL` to a model id that Google's pricing page lists with a free tier. There is no default, because model names change. Free-tier data may be used by Google, so read their terms.
+- **Groq (free backup):** `GROQ_API_KEY` from console.groq.com. Used automatically when Gemini or Anthropic is busy. Weak or malformed answers are asked again, on another provider when possible.
 
 Spending is capped: 30 AI calls per Pro person per day and 500 per day overall. Change them with `AI_DAILY_LIMIT` and `AI_GLOBAL_DAILY_LIMIT`.
 

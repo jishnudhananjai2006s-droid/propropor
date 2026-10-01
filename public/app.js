@@ -180,7 +180,7 @@ async function resolveConflict(useCloud){
 var gInit=false;
 async function mountAuth(){
   var cfg=ENT.cfg.auth||{};
-  if(cfg.mode!=='google')return;
+  if(!cfg.google)return;
   var el=$('#gbtn');if(!el)return;
   try{
     if(!window.google||!window.google.accounts)await loadScript('https://accounts.google.com/gsi/client');
@@ -200,6 +200,21 @@ async function onAuthed(tok){
 async function onGoogle(cred){
   try{var j=await api('/api/auth/google',{credential:cred,adult:true});await onAuthed(j.token);}
   catch(e){ui.loginErr=e.message;render();}
+}
+async function mailSend(){
+  var em=(($('#mailAddr')||{}).value||'').trim();
+  if(!/^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(em)){ui.loginErr='Check the email address and try again.';render();return;}
+  ui.busy=true;ui.loginErr='';ui.mailTo=em;render();
+  try{await api('/api/auth/email/send',{email:em,adult:true});ui.mailSent=true;ui.loginErr='';}
+  catch(e){ui.loginErr=e.message;}
+  ui.busy=false;render();
+}
+async function mailVerify(){
+  var code=(($('#mailCode')||{}).value||'').replace(/\s/g,'');
+  if(!/^\d{6}$/.test(code)){ui.loginErr='Enter the 6 digit code from the email.';render();return;}
+  ui.busy=true;ui.loginErr='';render();
+  try{var j=await api('/api/auth/email/verify',{email:ui.mailTo,code:code,adult:true});ui.busy=false;ui.mailSent=false;ui.mailTo='';await onAuthed(j.token);}
+  catch(e){ui.busy=false;ui.loginErr=e.message;render();}
 }
 async function onDemo(){
   var name=($('#demoName')||{}).value||'';
@@ -256,10 +271,17 @@ function checkAge(){
 function vLogin(){
   var a=ENT.cfg.auth||{},gate=!ENT.signedIn,why=gate?'Sign in to start':ui.afterLogin==='checkout'?'Sign in first so Pro follows you to every device.':(ui.afterLogin==='paid'?'Sign in to finish turning on Pro.':'Back up your progress and keep Pro on every device.');
   var h='<div class="sheet-back'+(gate?' gate':'')+'"'+(gate?'':' data-action="loginbg"')+'><div class="sheet" role="dialog" aria-modal="true" aria-label="Sign in"><div class="row"><span class="badge">Sign in</span>'+(a.mode==='demo'?'<span class="badge">Test mode</span>':'')+'</div><h2 style="font-size:24px">'+esc(why)+'</h2>';
-  if(a.mode==='google')h+='<div id="gbtn" style="min-height:44px"></div>';
-  else h+='<div><label class="lbl" for="demoName">Test name (any name you like)</label><input id="demoName" type="text" maxlength="20" autocomplete="off" placeholder="e.g. alex" value="'+esc(ui.demoName||'')+'"></div><button type="button" class="btn primary big" data-action="demologin">Continue</button><p class="note">Test mode: sign in with the same name on another device to see your account follow you.</p>';
+  if(a.mode==='demo')h+='<div><label class="lbl" for="demoName">Test name (any name you like)</label><input id="demoName" type="text" maxlength="20" autocomplete="off" placeholder="e.g. alex" value="'+esc(ui.demoName||'')+'"></div><button type="button" class="btn primary big" data-action="demologin">Continue</button><p class="note">Test mode: sign in with the same name on another device to see your account follow you.</p>';
+  else{
+    if(a.google)h+='<div id="gbtn" style="min-height:44px"></div>';
+    if(a.google&&a.email)h+='<p class="note" style="text-align:center;margin:0">or use your email</p>';
+    if(a.email){
+      if(ui.mailSent)h+='<div><label class="lbl" for="mailCode">6 digit code sent to '+esc(ui.mailTo)+'</label><input id="mailCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456"></div><button type="button" class="btn primary big" data-action="mailverify"'+(ui.busy?' disabled':'')+'>Sign in</button><button type="button" class="btn ghost" data-action="mailchange">Use a different email</button>';
+      else h+='<div><label class="lbl" for="mailAddr">Email</label><input id="mailAddr" type="email" autocomplete="email" maxlength="120" placeholder="you@example.com" value="'+esc(ui.mailTo||'')+'"></div><button type="button" class="btn primary big" data-action="mailsend"'+(ui.busy?' disabled':'')+'>'+(ui.busy?'Sending...':'Email me a code')+'</button>';
+    }
+  }
   h+='<p class="err" id="loginErr" role="alert">'+esc(ui.loginErr)+'</p>'+
-    '<p class="note">We keep an account id, your subscription, and a backup of your progress. We do not keep your name or email.</p>'+
+    '<p class="note">We keep an account id, your subscription, and a backup of your progress. We do not keep your name or email address.</p>'+
     (gate?'':'<button type="button" class="btn ghost" data-action="loginclose">Not now</button>')+'</div></div>';
   return h;
 }
@@ -654,7 +676,6 @@ function vRaceForm(){
     '<div class="lbl">Time you can give each day</div><div class="chips">'+[15,30,60,90].map(function(m){return chip(m+' min',f.mins===m,'rmins',m);}).join('')+'</div>'+
     (f.err?'<p class="err" style="margin-top:12px" role="alert">'+esc(f.err)+'</p>':'')+
     '<div style="margin-top:16px"><button type="button" class="btn primary big" data-action="racenext">Continue</button></div>'+
-    '<button type="button" class="btn ghost" data-action="racebasic" style="margin-top:6px">Use a basic plan instead (no AI)</button>'+
     '<p class="note" style="margin-top:10px">Next you answer a few short questions about your situation, so the plan fits you. Only your goal, your answers and the dates are sent to the AI, and only when you tap Continue. '+(ENT.pro?'':'Free plan: one race every '+(Number(ENT.cfg.freeCooldownDays)||3)+' days.')+'</p></section>';
   return h;
 }
@@ -771,16 +792,6 @@ function render(){
 }
 
 /* ---------- race building ---------- */
-function templateLaps(mins){
-  var m=Math.min(mins,15);
-  return [
-    {title:'Get clear',steps:[{text:'Write your goal in one sentence',min:5},{text:'List three reasons it matters to you',min:10},{text:'Write what “done” looks like',min:10}]},
-    {title:'Find the path',steps:[{text:'Search for three guides or people who did this',min:m},{text:'Pick one path and write its first five steps',min:m},{text:'Note what you need: time, tools, money',min:10}]},
-    {title:'Build the habit',steps:[{text:'Choose a fixed time each day for '+mins+' minutes',min:5},{text:'Do your first '+mins+'-minute session',min:mins},{text:'Write down what got in the way',min:5}]},
-    {title:'Halfway check',steps:[{text:'Write what is done and what is left',min:10},{text:'Shrink or drop one step that feels stuck',min:10},{text:'Tell one person about your progress',min:5}]},
-    {title:'Final push',steps:[{text:'List everything left as small steps',min:10},{text:'Do the hardest step first, for 25 minutes',min:25},{text:'Finish the last item on the list',min:m}]}
-  ];
-}
 function normalizeLaps(out,cap){
   if(!out||!Array.isArray(out.laps))return null;
   var laps=out.laps.slice(0,12).map(function(l){
@@ -794,16 +805,15 @@ function normalizeLaps(out,cap){
   return laps.length>=3?{name:clip(out.race_name,48),realism:clip(out.realism,500),laps:laps}:null;
 }
 function aiOn(){return !!(ENT.cfg.ai&&ENT.cfg.ai.ready);}
-function failNote(e){
-  var c=e&&e.code;
-  if(c==='free_cooldown')return e.message+' A basic plan was used this time.';
-  if(c==='pro_required')return 'A basic plan was used. Pro writes unlimited personal plans.';
-  if(c==='daily_limit')return 'You reached today\u2019s AI planning limit, so a basic plan was used.';
-  return 'The AI planner was not available, so a basic plan was used.';
+function planErr(f,e){
+  var c=e&&e.code;f.loading=false;ui.reset=false;
+  if(c==='pro_required'){ui.paywall='ai';render();return;}
+  if(c==='free_cooldown'||c==='daily_limit'){f.err=(e.message||'You have reached the AI planning limit for now.');render();return;}
+  if(c==='ai_unavailable'){f.err='The planner is starting up. Wait a few seconds and tap the button again. Nothing was lost.';render();return;}
+  failStay(f);
 }
-function keepBasic(e){var c=e&&e.code;return c==='free_cooldown'||c==='pro_required'||c==='daily_limit'||c==='ai_unavailable';}
 async function apiRetry(path,body,ctl,f){
-  var delays=[3000,6000,10000],stop={login_required:1,free_cooldown:1,pro_required:1,daily_limit:1,bad_goal:1,ai_unavailable:1};
+  var delays=[2000,4000,8000,12000,16000],stop={login_required:1,free_cooldown:1,pro_required:1,daily_limit:1,bad_goal:1,ai_unavailable:1};
   f.retry=0;
   for(var i=0;;i++){
     try{var out=await api(path,body,ctl.signal);f.retry=0;return out;}
@@ -816,7 +826,7 @@ async function apiRetry(path,body,ctl,f){
     }
   }
 }
-function failStay(f){f.loading=false;f.err='The planner could not answer after several automatic tries. Nothing was lost. Tap the button again, or use a basic plan.';ui.reset=false;render();}
+function failStay(f){f.loading=false;f.err='The planner is very busy right now and could not answer after many automatic tries. Nothing was lost and nothing was used up. Tap the button again in a minute.';ui.reset=false;render();}
 function planBody(f,extra){
   var b={goal:clip(f.goal,160),weeks:f.weeks,mins:f.mins,stage:S.stage||'',today:ymd(Date.now())};
   var st0=styleObj();if(st0){b.sprint=st0.work;b.brk=st0.brk;}
@@ -830,9 +840,9 @@ async function nextStep(){
   var f=ui.raceForm;if(!f)return;
   if(clip(f.goal,160).length<3){f.err='Write your goal first. A few words is enough.';render();return;}
   f.err='';
-  if(!aiOn()){buildRace(true,'The AI planner is not set up on this server yet, so a basic plan was used.');return;}
   if(!ENT.signedIn){needLogin();return;}
   f.loading='questions';f.t0=Date.now();render();
+  if(!aiOn()){try{ENT.cfg=await api('/api/config');}catch(e){} if(!aiOn()){planErr(f,{code:'ai_unavailable'});return;}}
   var ctl=new AbortController();ui.abort=ctl;
   try{
     var out=await apiRetry('/api/plan/questions',planBody(f),ctl,f);
@@ -844,15 +854,14 @@ async function nextStep(){
     ui.abort=null;if(ui.raceForm!==f)return;
     if(e&&e.name==='AbortError'){f.loading=false;render();return;}
     if(e&&e.code==='login_required'){needLogin();return;}
-    if(keepBasic(e)){buildRace(true,failNote(e));return;}
-    failStay(f);
+    planErr(f,e);
   }
 }
-async function buildRace(basic,note0){
+async function buildRace(){
   var f=ui.raceForm,goal=clip(f.goal,160);
   if(goal.length<3){f.err='Write your goal first. A few words is enough.';render();return;}
-  var useEv=!!(f.event&&f.useEvent&&evOk(f.event)),due=useEv?f.event.date:ymd(addDays(startOfDay(Date.now()),f.weeks*7)),cap=Math.max(f.mins,10),plan=null,note=note0||'',ai=false;
-  if(!basic){
+  var useEv=!!(f.event&&f.useEvent&&evOk(f.event)),due=useEv?f.event.date:ymd(addDays(startOfDay(Date.now()),f.weeks*7)),cap=Math.max(f.mins,10),plan=null,note='',ai=false;
+  {
     f.loading='plan';f.t0=Date.now();f.err='';render();
     var ctl=new AbortController();ui.abort=ctl;
     var ans=(f.qs||[]).filter(function(x){return x.a&&x.a.trim();}).map(function(x){return {q:x.q,a:clip(x.a,240)};});
@@ -865,18 +874,18 @@ async function buildRace(basic,note0){
       ui.abort=null;if(ui.raceForm!==f)return;
       if(e&&e.name==='AbortError'){f.loading=false;render();return;}
       if(e&&e.code==='login_required'){needLogin();return;}
-      if(!keepBasic(e)){failStay(f);return;}
-      note=failNote(e);
+      planErr(f,e);return;
     }
   }
   ui.abort=null;
   if(ui.raceForm!==f)return;
-  var laps=plan?plan.laps:templateLaps(f.mins),name=(plan&&plan.name)||clip(goal,48);
+  if(!plan){planErr(f,{code:'ai_failed'});return;}
+  var laps=plan.laps,name=plan.name||clip(goal,48);
   var r=makeRace(goal,name,due,f.mins,laps,ai,false);r.note=note;if(plan&&plan.realism)r.realism=plan.realism;if(useEv)r.event={name:clip(f.event.name,60),date:f.event.date,source:clip(f.event.source,60),note:clip(f.event.note,100)};
   S.races.unshift(r);save();
   if(ai&&!ENT.pro)ENT.aiFree=false;
   ui.raceForm=null;ui.raceOpen=r.id;ui.reset=true;render();pingDone('Your plan is ready.');
-  toast(ai?'Your plan is ready.':'Your race is ready (basic plan).');
+  toast('Your plan is ready.');
 }
 
 /* ---------- events ---------- */
@@ -920,7 +929,6 @@ function act(a,d){
     case 'rweeks':ui.raceForm.weeks=Number(d.v);render();break;
     case 'rmins':ui.raceForm.mins=Number(d.v);render();break;
     case 'racenext':nextStep();break;
-    case 'racebasic':buildRace(true,'Basic plan (no AI).');break;
     case 'racebuild':buildRace(false);break;
     case 'raceskipq':ui.raceForm.qs=[];buildRace(false);break;
     case 'qopt':(function(){var q=ui.raceForm.qs[Number(d.id)];if(q){var o=q.options[Number(d.v)];q.a=(q.a===o?'':o);render();}})();break;
@@ -958,6 +966,9 @@ function act(a,d){
     case 'bleave':api('/api/buddy/leave',{code:d.v}).catch(function(){});setRooms(rooms().filter(function(x){return x.code!==d.v;}));delete ui.rv[d.v];render();break;
     case 'paywallclose':case 'paywallbg':ui.paywall=null;ui.payErr='';render();break;
     case 'subscribe':if(!ENT.signedIn){ui.afterLogin='checkout';ui.login=true;ui.loginErr='';render();}else startCheckout();break;
+    case 'mailsend':mailSend();break;
+    case 'mailverify':mailVerify();break;
+    case 'mailchange':ui.mailSent=false;ui.loginErr='';render();break;
     case 'login':ui.afterLogin='';ui.login=true;ui.loginErr='';render();break;
     case 'loginbg':case 'loginclose':if(!ENT.signedIn)break;ui.login=false;ui.afterLogin='';render();break;
     case 'demologin':onDemo();break;
