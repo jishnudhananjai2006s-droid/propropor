@@ -75,7 +75,9 @@ class BlockService : Service() {
     }
 
     private fun shouldBlock(pkg: String): Boolean {
-        if (pkg == packageName || essentials.contains(pkg)) return false
+        if (pkg == packageName) return false
+        if (Focus.strictOn(this) && Focus.PROTECTED.contains(pkg)) return true
+        if (essentials.contains(pkg)) return false
         return if (Focus.mode(this) == "allow") launchable.contains(pkg) && !Focus.allowed(this).contains(pkg)
         else Focus.blocked(this).contains(pkg)
     }

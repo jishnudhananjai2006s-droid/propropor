@@ -415,7 +415,7 @@ function lockCard(){
     var on=lockOn(),md=lockMode(),sr=strictRunning();
     h+='<p class="sub" style="margin:6px 0 12px">'+(on?(md==='allow'?'Everything except the apps you allow is paused while your timer runs. Breaks are free.':'Chosen apps are paused while your timer runs. Breaks are free.'):'The lock is off. Apps stay open during sprints.')+'</p>'+
       '<div class="chips">'+chip('Lock '+(on?'on':'off'),on,'locktoggle','x')+chip('Strict '+(strictOn()?'on':'off'),strictOn(),'lockstrict','x')+'</div>'+
-      (strictOn()?'<p class="note" style="margin-top:8px">Strict: once a sprint starts you cannot pause it, end it early or turn the lock off. Up to 90 minutes.</p>':'')+
+      (strictOn()?'<p class="note" style="margin-top:8px">Strict: once a sprint starts you cannot pause it, end it early or turn the lock off, and Settings and app removal stay closed. Up to 90 minutes.</p>':'')+
       '<div class="lbl">Which apps</div><div class="chips">'+chip('Pause chosen apps',md!=='allow','lockmode','block')+chip('Allow only chosen apps',md==='allow','lockmode','allow')+chip(ui.lockOpen?'Hide list':(md==='allow'?'Choose allowed apps':'Choose apps'),false,'lockapps','x')+'</div>';
     var u=lockUse();
     if(u){
@@ -423,11 +423,29 @@ function lockCard(){
       h+='<div class="lbl">Today in your distracting apps</div><p class="sub" style="margin:0"><b style="color:var(--ink)">'+fmtM(u.total)+'</b>'+(goal?(u.total>goal?' · over your '+goal+' min goal by '+(u.total-goal)+' min':' · '+(goal-u.total)+' min left of your '+goal+' min goal'):'')+(u.top&&u.top.length?'<br><span class="note">'+u.top.map(function(x){return esc(x.n)+' '+fmtM(x.m);}).join(' · ')+'</span>':'')+'</p>'+
         '<div class="chips" style="margin-top:10px">'+[30,60,90,120,0].map(function(g){return chip(g?g+' min goal':'No goal',goal===g,'lockgoal',g);}).join('')+'</div>';
     }
+    h+=sitesBlock(n);
     if(ui.lockOpen){
       h+='<div class="chips" style="margin-top:12px;max-height:240px;overflow-y:auto">'+(ui.lockApps?ui.lockApps.map(function(a){return chip(esc(a.n),!!a.on,'lockapp',a.p);}).join(''):'<span class="note">Loading...</span>')+'</div>';
     }
   }
   return h+'</section>';
+}
+function siteState(force){
+  var now=Date.now();if(!force&&ui.sites&&now-(ui.sitesAt||0)<5000)return ui.sites;
+  try{ui.sites=JSON.parse(window.Android.sites());}catch(e){ui.sites=null;}ui.sitesAt=now;return ui.sites;
+}
+function sitesBlock(n){
+  var h='<div class="lbl">Websites and short videos</div>';
+  if(!n.a11y){
+    return h+'<p class="sub" style="margin:0 0 10px">To pause distracting websites and Shorts or Reels, Startline needs Android\u2019s Accessibility permission. While your timer runs, it reads the website address in your browser and whether a Shorts or Reels page is open, and steps in only for what you chose. In Strict mode it also keeps Settings closed so a sprint cannot be undone. Nothing it reads is saved or sent anywhere. You switch it on in Settings, and can switch it off any time.</p><button type="button" class="btn" data-action="lockacc">Agree and open Accessibility settings</button><p class="note" style="margin-top:8px">Find Startline Focus lock in the list and switch it on.</p>';
+  }
+  var st=siteState();if(!st)return h;
+  var md=st.mode==='allow'?'allow':'block',list=(md==='allow'?st.allow:st.block)||[];
+  h+='<div class="chips">'+chip('Pause chosen sites',md==='block','sitemode','block')+chip('Allow only study sites',md==='allow','sitemode','allow')+chip('Shorts and Reels '+(st.shorts?'paused':'allowed'),!!st.shorts,'lockshorts','x')+'</div>'+
+    '<p class="note" style="margin-top:8px">Adult sites are always blocked during a sprint.</p>'+
+    '<div class="chips" style="margin-top:10px">'+list.map(function(d){return chip(esc(d)+' ×',false,'siterm',esc(d));}).join('')+'</div>'+
+    '<div class="row" style="margin-top:10px"><input id="siteIn" type="text" placeholder="e.g. '+(md==='allow'?'ncert.nic.in':'reddit.com')+'" style="flex:1;min-width:0"><button type="button" class="btn" data-action="siteadd">Add</button></div>';
+  return h;
 }
 function loadLockApps(){
   try{var a=JSON.parse(window.Android.apps());a.sort(function(x,y){return (y.on-x.on)||x.n.toLowerCase().localeCompare(y.n.toLowerCase());});ui.lockApps=a;}catch(e){ui.lockApps=[];}
@@ -1034,6 +1052,11 @@ function act(a,d){
     case 'brk':if(d.id==='long')S.cycle={n:0,at:Date.now()};startBreak(Number(d.v));break;
     case 'longbrk':S.longBrk=Number(d.v);save();render();break;
     case 'remove':S.tasks=S.tasks.filter(function(x){return x.id!==d.id;});if(S.timer&&S.timer.taskId===d.id)S.timer.taskId=null;S.races.forEach(function(r){r.laps.forEach(function(l){l.steps.forEach(function(s){if(s.taskId===d.id)s.taskId=null;});});});save();render();break;
+    case 'lockacc':try{window.Android.openA11y();}catch(e){}break;
+    case 'lockshorts':{var s1=siteState(true);try{window.Android.setShorts(s1&&s1.shorts?'0':'1');}catch(e){}siteState(true);render();break;}
+    case 'sitemode':try{window.Android.setSitesMode(d.v);}catch(e){}siteState(true);render();break;
+    case 'siteadd':{var inp=$('#siteIn'),v=inp?inp.value.trim().toLowerCase().replace(/^https?:\/\//,'').replace(/^www\./,'').split('/')[0]:'';var s2=siteState(true);if(!v||v.indexOf('.')<0||!s2)break;var l2=(s2.mode==='allow'?s2.allow:s2.block).slice();if(l2.indexOf(v)<0)l2.push(v);try{window.Android.setSites(s2.mode,JSON.stringify(l2));}catch(e){}siteState(true);render();break;}
+    case 'siterm':{var s3=siteState(true);if(!s3)break;var l3=(s3.mode==='allow'?s3.allow:s3.block).filter(function(x){return x!==d.v;});try{window.Android.setSites(s3.mode,JSON.stringify(l3));}catch(e){}siteState(true);render();break;}
     case 'lockusage':try{window.Android.openUsage();}catch(e){}break;
     case 'lockoverlay':try{window.Android.openOverlay();}catch(e){}break;
     case 'locktoggle':if(strictRunning())break;lset('startline.lock',lockOn()?'0':'1');syncBlock();render();break;

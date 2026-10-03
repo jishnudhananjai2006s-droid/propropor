@@ -73,6 +73,7 @@ class MainActivity : Activity() {
         fun status(): String = JSONObject()
             .put("usage", Focus.hasUsageAccess(this@MainActivity))
             .put("overlay", Focus.hasOverlay(this@MainActivity))
+            .put("a11y", Focus.hasAccessibility(this@MainActivity))
             .put("v", 1).toString()
 
         @JavascriptInterface
@@ -105,6 +106,34 @@ class MainActivity : Activity() {
             for (k in 0 until a.length()) s.add(a.getString(k))
             Focus.setActive(this@MainActivity, s)
         }
+
+        @JavascriptInterface
+        fun openA11y() { runOnUiThread { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) } }
+
+        /** Website lists and short-video rule, for the Focus lock card. */
+        @JavascriptInterface
+        fun sites(): String {
+            val c = this@MainActivity
+            return JSONObject().put("mode", Focus.sitesMode(c)).put("shorts", Focus.shorts(c))
+                .put("block", JSONArray(Focus.sitesBlock(c).sorted())).put("allow", JSONArray(Focus.sitesAllow(c).sorted())).toString()
+        }
+
+        @JavascriptInterface
+        fun setSites(mode: String, json: String) {
+            val a = JSONArray(json)
+            val s = HashSet<String>()
+            for (k in 0 until a.length()) {
+                val d = a.getString(k).trim().lowercase().removePrefix("https://").removePrefix("http://").removePrefix("www.").substringBefore('/')
+                if (d.contains('.') && d.length < 80) s.add(d)
+            }
+            Focus.setSites(this@MainActivity, mode, s)
+        }
+
+        @JavascriptInterface
+        fun setSitesMode(m: String) { Focus.setSitesMode(this@MainActivity, m) }
+
+        @JavascriptInterface
+        fun setShorts(on: String) { Focus.setShorts(this@MainActivity, on == "1") }
 
         @JavascriptInterface
         fun setMode(m: String) { Focus.setMode(this@MainActivity, m) }

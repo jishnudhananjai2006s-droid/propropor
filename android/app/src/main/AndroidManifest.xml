@@ -53,5 +53,17 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Focus lock: while the user's own focus timer runs, watches which app is in front and shows a return-to-task screen over apps the user chose to block." />
         </service>
+        <service
+            android:name=".FocusAccessibility"
+            android:exported="true"
+            android:label="Startline Focus lock"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_config" />
+        </service>
     </application>
 </manifest>

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="a11y_desc">Startline Focus lock. While your own focus timer runs, it reads which website is open in your browser and whether a Shorts or Reels page is showing, and steps in only if you chose to block it. During a Strict sprint it also keeps Settings and app-removal screens closed. Nothing it reads is stored or sent anywhere.</string>
+</resources>
