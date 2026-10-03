@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand">#0F3B2B</color>
+    <style name="Theme.Startline" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#F3F5F0</item>
+        <item name="android:statusBarColor">#F3F5F0</item>
+        <item name="android:navigationBarColor">#F3F5F0</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>
