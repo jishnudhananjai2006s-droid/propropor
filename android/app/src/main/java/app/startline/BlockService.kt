@@ -25,6 +25,8 @@ class BlockService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var current: String? = null
     private var lastTs = 0L
+    private var launchable: Set<String> = emptySet()
+    private var essentials: Set<String> = emptySet()
     private val tick = object : Runnable {
         override fun run() {
             val end = Focus.endAt(this@BlockService)
@@ -51,11 +53,31 @@ class BlockService : Service() {
             .setOngoing(true)
             .build()
         ServiceCompat.startForeground(this, 1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        loadSets()
         lastTs = System.currentTimeMillis() - 3000
         current = null
         handler.removeCallbacks(tick)
         handler.post(tick)
         return START_NOT_STICKY
+    }
+
+    /** Apps that are never covered, so the phone stays usable: home screen, calls, messages, settings, keyboard. */
+    private fun loadSets() {
+        val pm = packageManager
+        launchable = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0).map { it.activityInfo.packageName }.toSet()
+        val e = HashSet<String>()
+        e.add(packageName); e.add("com.android.settings"); e.add("com.android.systemui")
+        pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0).forEach { e.add(it.activityInfo.packageName) }
+        try { (getSystemService(Context.TELECOM_SERVICE) as android.telecom.TelecomManager).defaultDialerPackage?.let { e.add(it) } } catch (_: Exception) {}
+        try { android.provider.Telephony.Sms.getDefaultSmsPackage(this)?.let { e.add(it) } } catch (_: Exception) {}
+        try { android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.DEFAULT_INPUT_METHOD)?.substringBefore('/')?.let { e.add(it) } } catch (_: Exception) {}
+        essentials = e
+    }
+
+    private fun shouldBlock(pkg: String): Boolean {
+        if (pkg == packageName || essentials.contains(pkg)) return false
+        return if (Focus.mode(this) == "allow") launchable.contains(pkg) && !Focus.allowed(this).contains(pkg)
+        else Focus.blocked(this).contains(pkg)
     }
 
     private fun check() {
@@ -72,7 +94,7 @@ class BlockService : Service() {
             lastTs = maxOf(lastTs, e.timeStamp)
         }
         val pkg = current ?: return
-        if (pkg != packageName && Focus.blocked(this).contains(pkg)) {
+        if (shouldBlock(pkg)) {
             val i = Intent(this, BlockActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             startActivity(i)
             current = packageName

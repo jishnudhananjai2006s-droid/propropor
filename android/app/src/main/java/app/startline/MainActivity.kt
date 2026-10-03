@@ -87,7 +87,7 @@ class MainActivity : Activity() {
         fun apps(): String {
             val pm = packageManager
             val i = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-            val chosen = Focus.blocked(this@MainActivity)
+            val chosen = Focus.active(this@MainActivity)
             val arr = JSONArray()
             pm.queryIntentActivities(i, 0)
                 .map { it.activityInfo.packageName to it.loadLabel(pm).toString() }
@@ -103,13 +103,45 @@ class MainActivity : Activity() {
             val a = JSONArray(json)
             val s = HashSet<String>()
             for (k in 0 until a.length()) s.add(a.getString(k))
-            Focus.setBlocked(this@MainActivity, s)
+            Focus.setActive(this@MainActivity, s)
         }
 
         @JavascriptInterface
-        fun start(endAtMs: String) {
+        fun setMode(m: String) { Focus.setMode(this@MainActivity, m) }
+
+        @JavascriptInterface
+        fun mode(): String = Focus.mode(this@MainActivity)
+
+        /** Minutes spent today in the apps the user chose to pause, with the top three. Stays on the phone. */
+        @JavascriptInterface
+        fun usage(): String {
+            val out = JSONObject().put("total", 0).put("top", JSONArray())
+            if (!Focus.hasUsageAccess(this@MainActivity)) return out.toString()
+            val um = getSystemService(USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+            val cal = java.util.Calendar.getInstance().apply { set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0) }
+            val stats = um.queryAndAggregateUsageStats(cal.timeInMillis, System.currentTimeMillis())
+            val pm = packageManager
+            val set = Focus.blocked(this@MainActivity)
+            var total = 0L
+            val rows = ArrayList<Pair<String, Long>>()
+            for ((p, st) in stats) {
+                if (!set.contains(p) || st.totalTimeInForeground <= 0) continue
+                total += st.totalTimeInForeground
+                val name = try { pm.getApplicationLabel(pm.getApplicationInfo(p, 0)).toString() } catch (_: Exception) { p }
+                rows.add(name to st.totalTimeInForeground)
+            }
+            val top = JSONArray()
+            rows.sortedByDescending { it.second }.take(3).forEach { top.put(JSONObject().put("n", it.first).put("m", it.second / 60000)) }
+            return out.put("total", total / 60000).put("top", top).toString()
+        }
+
+        @JavascriptInterface
+        fun start(endAtMs: String, strict: String) {
             val t = endAtMs.toDoubleOrNull()?.toLong() ?: return
             Focus.setEndAt(this@MainActivity, t)
+            // Strict mode: the lock cannot be stopped early from the app. Capped at 90 minutes so nobody is ever stuck.
+            val cap = System.currentTimeMillis() + 90 * 60000L
+            Focus.setStrictEnd(this@MainActivity, if (strict == "1") minOf(t, cap) else 0L)
             if (Focus.hasUsageAccess(this@MainActivity) && Focus.hasOverlay(this@MainActivity)) {
                 ContextCompat.startForegroundService(this@MainActivity, Intent(this@MainActivity, BlockService::class.java))
             }
@@ -117,6 +149,7 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun stop() {
+            if (Focus.strictEnd(this@MainActivity) > System.currentTimeMillis()) return
             Focus.setEndAt(this@MainActivity, 0L)
             stopService(Intent(this@MainActivity, BlockService::class.java))
         }

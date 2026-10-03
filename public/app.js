@@ -386,11 +386,19 @@ async function suggestMethod(){
 function nat(){try{return window.Android&&window.Android.status?JSON.parse(window.Android.status()):null;}catch(e){return null;}}
 var blockEnd=0;
 function lockOn(){return lget('startline.lock')!=='0';}
+function strictOn(){return lget('startline.strict')==='1';}
+function strictRunning(){var T=S.timer;return !!(T&&T.strict&&!T.ended&&T.endAt>Date.now());}
+function lockMode(){try{return window.Android.mode?window.Android.mode():'block';}catch(e){return 'block';}}
+function fmtM(m){return m>=60?Math.floor(m/60)+' h '+(m%60)+' min':m+' min';}
+function lockUse(){
+  var now=Date.now();if(ui.lockUseAt&&now-ui.lockUseAt<30000)return ui.lockUse;
+  try{ui.lockUse=JSON.parse(window.Android.usage());}catch(e){ui.lockUse=null;}ui.lockUseAt=now;return ui.lockUse;
+}
 function syncBlock(){
   if(!window.Android||!window.Android.start)return;
   var T=S.timer,want=!!(T&&!T.ended&&!T.paused&&!T.brk&&T.endAt>Date.now()&&lockOn());
   try{
-    if(want){if(blockEnd!==T.endAt){window.Android.start(String(T.endAt));blockEnd=T.endAt;}}
+    if(want){if(blockEnd!==T.endAt){window.Android.start(String(T.endAt),T.strict?'1':'0');blockEnd=T.endAt;}}
     else if(blockEnd){window.Android.stop();blockEnd=0;}
   }catch(e){}
 }
@@ -404,9 +412,17 @@ function lockCard(){
       '<button type="button" class="btn'+(n.usage&&!n.overlay?' primary':'')+'" data-action="lockoverlay">'+(n.overlay?'✓ ':'2. ')+'Allow display over other apps</button></div>'+
       '<p class="note" style="margin-top:10px">In the list, find Startline and switch it on. Then come back here.</p>';
   }else{
-    var on=lockOn();
-    h+='<p class="sub" style="margin:6px 0 12px">'+(on?'Chosen apps are paused while your timer runs. Breaks are free.':'The lock is off. Apps stay open during sprints.')+'</p>'+
-      '<div class="chips">'+chip('Lock '+(on?'on':'off'),on,'locktoggle','x')+chip(ui.lockOpen?'Hide apps':'Choose apps',false,'lockapps','x')+'</div>';
+    var on=lockOn(),md=lockMode(),sr=strictRunning();
+    h+='<p class="sub" style="margin:6px 0 12px">'+(on?(md==='allow'?'Everything except the apps you allow is paused while your timer runs. Breaks are free.':'Chosen apps are paused while your timer runs. Breaks are free.'):'The lock is off. Apps stay open during sprints.')+'</p>'+
+      '<div class="chips">'+chip('Lock '+(on?'on':'off'),on,'locktoggle','x')+chip('Strict '+(strictOn()?'on':'off'),strictOn(),'lockstrict','x')+'</div>'+
+      (strictOn()?'<p class="note" style="margin-top:8px">Strict: once a sprint starts you cannot pause it, end it early or turn the lock off. Up to 90 minutes.</p>':'')+
+      '<div class="lbl">Which apps</div><div class="chips">'+chip('Pause chosen apps',md!=='allow','lockmode','block')+chip('Allow only chosen apps',md==='allow','lockmode','allow')+chip(ui.lockOpen?'Hide list':(md==='allow'?'Choose allowed apps':'Choose apps'),false,'lockapps','x')+'</div>';
+    var u=lockUse();
+    if(u){
+      var goal=Number(lget('startline.goal'))||0;
+      h+='<div class="lbl">Today in your distracting apps</div><p class="sub" style="margin:0"><b style="color:var(--ink)">'+fmtM(u.total)+'</b>'+(goal?(u.total>goal?' · over your '+goal+' min goal by '+(u.total-goal)+' min':' · '+(goal-u.total)+' min left of your '+goal+' min goal'):'')+(u.top&&u.top.length?'<br><span class="note">'+u.top.map(function(x){return esc(x.n)+' '+fmtM(x.m);}).join(' · ')+'</span>':'')+'</p>'+
+        '<div class="chips" style="margin-top:10px">'+[30,60,90,120,0].map(function(g){return chip(g?g+' min goal':'No goal',goal===g,'lockgoal',g);}).join('')+'</div>';
+    }
     if(ui.lockOpen){
       h+='<div class="chips" style="margin-top:12px;max-height:240px;overflow-y:auto">'+(ui.lockApps?ui.lockApps.map(function(a){return chip(esc(a.n),!!a.on,'lockapp',a.p);}).join(''):'<span class="note">Loading...</span>')+'</div>';
     }
@@ -520,6 +536,7 @@ function startSprint(taskId,len){
   var now=Date.now(),t=taskId?taskById(taskId):null;
   S.timer={taskId:t?t.id:null,len:len,endAt:now+len*MIN,paused:false,remainMs:len*MIN,began:now,ended:false,sid:null};
   if(ui.method&&len>2){S.timer.method={name:ui.method.name,note:ui.method.note,steps:ui.method.steps||[]};}
+  if(window.Android&&window.Android.start&&lockOn()&&strictOn()){var nn=nat();if(nn&&nn.usage&&nn.overlay&&len<=90)S.timer.strict=true;}
   ui.method=null;
   if(t&&!t.started)t.started=now;
   save();ui.tab='focus';ui.reset=true;render();buddyPing(true);
@@ -705,8 +722,8 @@ function vFocus(){
     (T.method&&!T.brk?'<div class="mnote" style="margin-top:10px"><b>'+esc(T.method.name)+'</b> <span>'+esc(T.method.note)+'</span>'+(T.method.steps&&T.method.steps.length?'<ol>'+T.method.steps.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ol>':'')+'</div>':'')+
     '<div class="clock" id="clock" role="timer" aria-label="Time left">'+fmtClock(remain)+'</div>'+
     '<div class="bar"><i id="barFill" style="width:'+((T.len*MIN-remain)/(T.len*MIN)*100)+'%"></i></div>'+
-    '<div class="row" style="margin-top:16px">'+(T.paused?'<button type="button" class="btn primary" data-action="resume">Resume</button>':'<button type="button" class="btn" data-action="pause">Pause</button>')+
-    '<button type="button" class="btn" data-action="early">Finish early</button>'+
+    '<div class="row" style="margin-top:16px">'+(strictRunning()?'<span class="note">Strict sprint. No pausing or ending early.</span>':(T.paused?'<button type="button" class="btn primary" data-action="resume">Resume</button>':'<button type="button" class="btn" data-action="pause">Pause</button>')+
+    '<button type="button" class="btn" data-action="early">Finish early</button>')+
     (ENT.cfg.testMode?'<button type="button" class="btn ghost small" data-action="skip">Prototype: jump to end</button>':'')+'</div>'+
     (T.paused?'<p class="note" style="margin-top:10px">Paused. The clock is stopped until you resume.</p>':'')+'</section>';
   if(T.brk)h+=maximCard();
@@ -1019,7 +1036,10 @@ function act(a,d){
     case 'remove':S.tasks=S.tasks.filter(function(x){return x.id!==d.id;});if(S.timer&&S.timer.taskId===d.id)S.timer.taskId=null;S.races.forEach(function(r){r.laps.forEach(function(l){l.steps.forEach(function(s){if(s.taskId===d.id)s.taskId=null;});});});save();render();break;
     case 'lockusage':try{window.Android.openUsage();}catch(e){}break;
     case 'lockoverlay':try{window.Android.openOverlay();}catch(e){}break;
-    case 'locktoggle':lset('startline.lock',lockOn()?'0':'1');syncBlock();render();break;
+    case 'locktoggle':if(strictRunning())break;lset('startline.lock',lockOn()?'0':'1');syncBlock();render();break;
+    case 'lockstrict':lset('startline.strict',strictOn()?'0':'1');render();break;
+    case 'lockmode':try{window.Android.setMode(d.v);}catch(e){}if(ui.lockOpen)loadLockApps();render();break;
+    case 'lockgoal':lset('startline.goal',String(d.v));render();break;
     case 'lockapps':ui.lockOpen=!ui.lockOpen;if(ui.lockOpen)loadLockApps();render();break;
     case 'lockapp':{var la=(ui.lockApps||[]).find(function(x){return x.p===d.v;});if(la){la.on=!la.on;try{window.Android.setBlocked(JSON.stringify(ui.lockApps.filter(function(x){return x.on;}).map(function(x){return x.p;})));}catch(e){}render();}break;}
     case 'method':{var mm=methodById(d.v);if(!mm)break;ui.method=(ui.method&&ui.method.id===mm.id&&!ui.method.ai)?null:{id:mm.id,name:mm.name,note:mm.note,len:mm.len};if(ui.method&&mm.len)ui.len=mm.len;render();break;}
@@ -1027,9 +1047,9 @@ function act(a,d){
     case 'muse':if(ui.mAI&&ui.mAI.m){ui.method=ui.mAI.m;if(ui.method.len)ui.len=Math.min(90,Math.max(5,ui.method.len));render();}break;
     case 'setlen':ui.len=Number(d.v);render();break;
     case 'startFocus':startSprint(ui.focusTask||null,ui.len||defLen());break;
-    case 'pause':if(T&&!T.paused){T.remainMs=Math.max(0,T.endAt-Date.now());T.paused=true;save();render();}break;
+    case 'pause':if(strictRunning())break;if(T&&!T.paused){T.remainMs=Math.max(0,T.endAt-Date.now());T.paused=true;save();render();}break;
     case 'resume':if(T&&T.paused){T.endAt=Date.now()+T.remainMs;T.paused=false;save();render();}break;
-    case 'early':endSprint();break;
+    case 'early':if(strictRunning())break;endSprint();break;
     case 'skip':if(T&&!T.ended){T.endAt=Date.now();T.paused=false;endSprint();}break;
     case 'rate':{if(T&&T.sid){var s=S.sessions.find(function(x){return x.id===T.sid;});if(s){s.feel=Number(d.v);save();render();}}break;}
     case 'finish':if(T&&T.taskId){completeTask(T.taskId);}S.timer=null;save();render();toast(winMsg());break;
