@@ -38,7 +38,7 @@ function maximCard(){
   return '<blockquote class="maxim">'+esc(m[0])+'<small>'+esc(m[1])+' (adapted)</small></blockquote>';
 }
 /* ---------- state (stays on this device) ---------- */
-function fresh(){return {v:1,stage:null,tasks:[],sessions:[],parked:[],races:[],timer:null,demo:false,pause:null,pauses:[],duty:{},seen:{},remind:null,style:null};}
+function fresh(){return {v:1,stage:null,tasks:[],sessions:[],parked:[],races:[],timer:null,demo:false,pause:null,pauses:[],duty:{},profile:null,seen:{},remind:null,style:null};}
 function load(){try{var r=localStorage.getItem(KEY);if(r){var o=JSON.parse(r);if(o&&o.v===1&&Array.isArray(o.tasks))return o;}}catch(e){}return null;}
 function save(nosync){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}if(!nosync)scheduleSync();}
 var S=load();
@@ -121,14 +121,14 @@ function getMeta(){try{return JSON.parse(localStorage.getItem(SYNCKEY)||'null')|
 function setMeta(m){try{localStorage.setItem(SYNCKEY,JSON.stringify(m));}catch(e){}}
 function exportState(){
   var nd=function(x){return !x.demo;};
-  return {v:1,stage:S.stage,tasks:S.tasks.filter(nd),sessions:S.sessions.filter(nd),parked:S.parked,races:S.races.filter(nd),pause:S.pause||null,pauses:S.pauses||[],duty:S.duty||{}};
+  return {v:1,stage:S.stage,tasks:S.tasks.filter(nd),sessions:S.sessions.filter(nd),parked:S.parked,races:S.races.filter(nd),pause:S.pause||null,pauses:S.pauses||[],duty:S.duty||{},profile:S.profile||null};
 }
 function hasReal(st){return st.tasks.length>0||st.sessions.length>0||st.races.length>0||st.parked.length>0;}
 function adopt(st){
   S.stage=st.stage||S.stage;
   S.tasks=Array.isArray(st.tasks)?st.tasks:[];S.sessions=Array.isArray(st.sessions)?st.sessions:[];
   S.parked=Array.isArray(st.parked)?st.parked:[];S.races=Array.isArray(st.races)?st.races:[];
-  S.pause=st.pause&&st.pause.since?{since:Number(st.pause.since)}:null;S.pauses=Array.isArray(st.pauses)?st.pauses:[];S.duty=st.duty&&typeof st.duty==='object'?st.duty:{};S.demo=false;S.timer=null;ui.focusTask='';ui.raceOpen=null;ensureDuty();save(true);
+  S.pause=st.pause&&st.pause.since?{since:Number(st.pause.since)}:null;S.pauses=Array.isArray(st.pauses)?st.pauses:[];S.duty=st.duty&&typeof st.duty==='object'?st.duty:{};S.profile=st.profile&&st.profile.wake?st.profile:(S.profile||null);S.demo=false;S.timer=null;ui.focusTask='';ui.raceOpen=null;ensureDuty();save(true);
 }
 function wipeLocal(){
   clearTimeout(syncT);
@@ -311,11 +311,11 @@ function freeRaceWait(){
 }
 function freeRaceDate(){return new Date(Date.now()+freeRaceWait()).toLocaleDateString(undefined,{day:'numeric',month:'short'});}
 function vPaywall(){
-  var c=ENT.cfg,why={races:'Free plan: one race every '+(Number(c.freeCooldownDays)||3)+' days.',ai:'Get a plan tailored to your goal.',report:'See how much sooner you start.',general:'Go further with Pro.'}[ui.paywall]||'Go further with Pro.';
+  var c=ENT.cfg,why={races:'Free plan: one race every '+(Number(c.freeCooldownDays)||3)+' days.',ai:'Get a plan tailored to your goal.',edit:'Change your plan any time by chatting with the assistant.',report:'See how much sooner you start.',general:'Go further with Pro.'}[ui.paywall]||'Go further with Pro.';
   return '<div class="sheet-back" data-action="paywallbg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Startline Pro">'+
     '<div class="row"><span class="badge">Startline Pro</span>'+(c.testMode?'<span class="badge">Test mode</span>':'')+'</div>'+
     '<h2 style="font-size:24px">'+esc(why)+'</h2>'+(ui.paywall==='races'&&freeRaceWait()>0?'<p class="sub">Your next free race opens on '+esc(freeRaceDate())+'. Pro has no waiting.</p>':'')+
-    '<ul class="perks"><li>Start a new race any time, each planned by AI around your answers</li><li>Week-by-week proof that you start sooner</li><li>Cancel any time</li></ul>'+
+    '<ul class="perks"><li>Start a new race any time, each planned by AI around your answers</li><li>Chat to edit any plan: reword, add, remove or re-time steps</li><li>Week-by-week proof that you start sooner</li><li>Cancel any time</li></ul>'+
     '<div><span class="price">'+esc(c.priceLabel)+'</span>'+(c.trialDays?'<div class="note">'+c.trialDays+'-day free trial first.</div>':'')+'</div>'+
     (!ENT.signedIn?'<p class="note">You sign in first, so Pro follows you to every device.</p>':'')+'<button type="button" class="btn primary big" data-action="subscribe"'+(ui.busy?' disabled':'')+'>'+(ui.busy?'One moment...':(!ENT.signedIn?'Sign in to continue':(c.trialDays?'Start '+c.trialDays+'-day free trial':'Go Pro')))+'</button>'+
     (c.testMode?'<p class="note">Test mode: payments are simulated. Nobody is charged.</p>':'')+
@@ -599,6 +599,74 @@ function clearDemo(){
   if(ui.raceOpen&&!S.races.some(function(r){return r.id===ui.raceOpen;}))ui.raceOpen=null;
   S.demo=false;
 }
+
+/* ---------- your day: profile, kinds, time-of-day scheduler ---------- */
+var PARTN={morning:'Morning',midday:'Midday',afternoon:'Afternoon',evening:'Evening',night:'Night'};
+function stageChips(on){
+  var L=[['school','Exam prep'],['college','College'],['work','Job or internship'],['fitness','Fitness and health'],['life','Skills or a project']];
+  return L.map(function(x){return chip(x[1],on&&S.stage===x[0],'stage',x[0]);}).join('');
+}
+function kindOf(r){
+  if(r.kind)return r.kind;
+  var g=(r.goal||'')+' '+(r.name||'');
+  if(/\b(gym|fit|workout|run|running|marathon|weight|diet|yoga|body|muscle|walk|swim|cycl)/i.test(g))return 'fitness';
+  if(/\b(sleep|health|meditat|mental|habit)/i.test(g))return 'health';
+  if(/\b(guitar|piano|music|draw|paint|write|writing|novel|design|art|video|photo)/i.test(g))return 'creative';
+  if(/\b(job|intern|interview|career|resume|business|startup|client|project)/i.test(g))return 'work';
+  return 'study';
+}
+function partOf(r){
+  if(r.best&&PARTN[r.best])return r.best;
+  var pk=(S.profile&&S.profile.peak)||'',k=kindOf(r);
+  return ({study:pk||'morning',work:pk||'morning',creative:pk||'afternoon',fitness:pk==='night'?'evening':'morning',health:'morning',life:'evening'})[k]||pk||'morning';
+}
+function hm(v){var a=String(v||'').split(':');return (+a[0]||0)*60+(+a[1]||0);}
+function clock(m){m=((Math.round(m)%1440)+1440)%1440;var h=Math.floor(m/60),mm=m%60;return (h%12||12)+(mm?':'+('0'+mm).slice(-2):'')+' '+(h>=12?'PM':'AM');}
+function partName(m){m=m%1440;return m<660?'Morning':(m<780?'Midday':(m<1020?'Afternoon':(m<1260?'Evening':'Night')));}
+function subtract(free,a,b){
+  var out=[];free.forEach(function(f){if(b<=f[0]||a>=f[1]){out.push(f);return;}if(a>f[0])out.push([f[0],a]);if(b<f[1])out.push([b,f[1]]);});
+  return out;
+}
+function planDay(tasks){
+  var pf=S.profile;if(!pf)return null;
+  var wake=hm(pf.wake),sl=hm(pf.sleep);if(sl<=wake)sl+=1440;
+  var d=new Date(),now=d.getHours()*60+d.getMinutes(),lo=Math.max(wake+30,Math.ceil((now+5)/5)*5),hi=sl-30;
+  var free=hi>lo?[[lo,hi]]:[];
+  (pf.busy||[]).forEach(function(b){var a=hm(b.from),e=hm(b.to);if(e<=a)e+=1440;free=subtract(free,a,e);if(a<1440)free=subtract(free,a+1440,e+1440);});
+  var rng={morning:[wake+30,720],midday:[660,840],afternoon:[780,1020],evening:[1020,1260],night:[1260,hi]};
+  var due={};S.races.forEach(function(r){due[r.id]=r.due||'9999';});
+  var order=tasks.filter(function(t){return !t.started;}).sort(function(a,b){
+    var ka=a.rid?0:1,kb=b.rid?0:1;if(ka!==kb)return ka-kb;
+    if(a.rid&&b.rid&&a.rid!==b.rid)return String(due[a.rid]).localeCompare(String(due[b.rid]));
+    return (a.created||0)-(b.created||0);
+  });
+  var out={};
+  order.forEach(function(t){
+    var need=Math.min(150,Math.max(15,t.min||25)),r=t.rid?S.races.find(function(x){return x.id===t.rid;}):null;
+    var pr=rng[r?partOf(r):'afternoon']||[lo,hi],pick=null,i;
+    for(i=0;i<free.length&&!pick;i++){var a=Math.max(free[i][0],pr[0]);if(Math.min(free[i][1],pr[1])-a>=need)pick=[a,a+need];}
+    for(i=0;i<free.length&&!pick;i++){if(free[i][1]-free[i][0]>=need)pick=[free[i][0],free[i][0]+need];}
+    if(!pick)return;
+    free=subtract(free,pick[0],pick[1]+5);
+    out[t.id]={s:pick[0],e:pick[1],label:partName(pick[0])+' · '+clock(pick[0])+'–'+clock(pick[1])};
+  });
+  return out;
+}
+function profileCard(){
+  var p=ui.pf=ui.pf||(S.profile?JSON.parse(JSON.stringify(S.profile)):{wake:'07:00',sleep:'23:00',peak:'',busy:[{from:'',to:'',label:''}]});
+  if(!p.busy||!p.busy.length)p.busy=[{from:'',to:'',label:''}];
+  var b=p.busy[0];
+  return '<section class="card"><h2>Your day, roughly</h2><p class="sub" style="margin:6px 0 12px">A few questions so Startline can put each task at the best time of day, whatever your goals are. Rough times are fine. Your answers stay on your device and only travel with your own backup.</p>'+
+    '<div class="row" style="flex-wrap:wrap;gap:12px"><div><label class="lbl" for="pfWake" style="margin-top:0">I wake up around</label><input id="pfWake" type="time" value="'+esc(p.wake)+'" style="max-width:150px"></div><div><label class="lbl" for="pfSleep" style="margin-top:0">I go to sleep around</label><input id="pfSleep" type="time" value="'+esc(p.sleep)+'" style="max-width:150px"></div></div>'+
+    '<div class="lbl">Busy part of my day (classes, work, travel). Optional</div><div class="row" style="flex-wrap:wrap;gap:8px"><input id="pfFrom" type="time" value="'+esc(b.from)+'" aria-label="Busy from" style="max-width:130px"><span class="note">to</span><input id="pfTo" type="time" value="'+esc(b.to)+'" aria-label="Busy until" style="max-width:130px"><input id="pfLabel" type="text" maxlength="30" placeholder="e.g. College" value="'+esc(b.label)+'" aria-label="What is it" style="flex:1;min-width:110px"></div>'+
+    '<div class="lbl">When is your head clearest?</div><div class="chips">'+[['morning','Morning'],['afternoon','Afternoon'],['evening','Evening'],['night','Late night'],['','Not sure']].map(function(x){return chip(x[1],p.peak===x[0],'pfpeak',x[0]);}).join('')+'</div>'+
+    '<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn primary" data-action="pfsave">Save my day</button>'+(S.profile?'<button type="button" class="btn ghost" data-action="pfclose">Cancel</button>':'<button type="button" class="btn ghost" data-action="pfskip">Skip for now</button>')+'</div></section>';
+}
+function readPf(){
+  var p=ui.pf;if(!p)return;
+  var g=function(id){var e=$('#'+id);return e?e.value:null;};
+  if(g('pfWake')!==null){p.wake=g('pfWake')||p.wake;p.sleep=g('pfSleep')||p.sleep;p.busy=[{from:g('pfFrom')||'',to:g('pfTo')||'',label:clip(g('pfLabel')||'',30)}];}
+}
 function ensureDuty(){
   if(isPaused())return false;
   var day=ymd(Date.now()),added=false;S.duty=S.duty||{};
@@ -655,7 +723,7 @@ function weekStrip(){
   return h+'</div>';
 }
 function taskCard(t){
-  var meta=(t.min?'<span class="pill">'+t.min+' min</span>':'')+(t.part?'<span class="pill">'+esc(t.part)+'</span>':'')+(t.lap?'<span class="pill">'+esc(t.lap)+'</span>':'')+(t.when?'<span class="pill">'+esc(t.when)+'</span>':'')+(t.started?'<span class="pill on">Started</span>':'');
+  var meta=(t.min?'<span class="pill">'+t.min+' min</span>':'')+(t.part?'<span class="pill">'+esc(t.part)+'</span>':'')+(t.lap?'<span class="pill">'+esc(t.lap)+'</span>':'')+(ui.pd&&ui.pd[t.id]?'<span class="pill on">'+esc(ui.pd[t.id].label)+'</span>':'')+(t.when?'<span class="pill">'+esc(t.when)+'</span>':'')+(t.started?'<span class="pill on">Started</span>':'');
   return '<li class="card tcard"><button type="button" class="check" data-action="toggle" data-id="'+t.id+'" aria-label="Mark done: '+esc(t.title)+'"></button>'+
     '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="s">First step: '+esc(t.step)+'</div>'+(meta?'<div class="meta">'+meta+'</div>':'')+'</div>'+
     '<div class="acts">'+(t.min>2?'<button type="button" class="btn small primary"'+(ui.tourTaskId===t.id?' data-tour="start"':'')+' data-action="startt" data-id="'+t.id+'">Start '+taskLen(t)+' min</button><button type="button" class="btn small" data-action="start2" data-id="'+t.id+'">Just 2 min</button>':'<button type="button" class="btn small primary"'+(ui.tourTaskId===t.id?' data-tour="start"':'')+' data-action="start2" data-id="'+t.id+'">Start 2 min</button>')+
@@ -677,19 +745,21 @@ function vToday(){
   var sess=S.sessions.filter(function(s){return s.start>=sod;});
   var mins=sess.reduce(function(a,s){return a+s.min;},0);
   ui.tourTaskId=(open.find(function(t){return !t.demo;})||{}).id;
-  var ph={school:'Revise Unit 4 notes',college:'Start the assignment',work:'Update my résumé'}[S.stage]||'Start the assignment';
+  var ph={school:'Revise Unit 4 notes',college:'Start the assignment',work:'Update my résumé',fitness:'Go for a 20 minute walk',life:'Practise guitar chords'}[S.stage]||'Start the thing I keep putting off';
   var todo=open.filter(function(t){return !t.started;}),prog=open.filter(function(t){return t.started;});
   var f=ui.tf||(todo.length?'todo':(prog.length?'prog':'done'));
+  ui.pd=planDay(todo);if(ui.pd)todo.sort(function(a,b){var x=ui.pd[a.id],y=ui.pd[b.id];return (x?x.s:99999)-(y?y.s:99999);});
   var h='<div class="topbar"><div class="head"><div class="eyebrow">'+esc(new Date().toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}))+'</div><h1>'+greeting()+'</h1><p class="sub">'+esc(tn('What will you begin today?','Choose one thing. Begin.'))+'</p></div>'+
     (hasActivePlan()?'':'<button type="button" class="roundbtn" data-action="addtoggle" aria-label="Add a task" aria-expanded="'+(ui.addOpen?'true':'false')+'">'+(ui.addOpen?'×':'+')+'</button>')+'</div>';
   h+=maximCard();
   h+=welcomeBack()+seasonCard();
   h+=ringCard(wins,open,sess,mins)+weekStrip();
   if(!S.stage){
-    h+='<section class="card"><h2>One quick question</h2><p class="sub" style="margin:6px 0 12px">What are you working towards? It sets your default sprint length.</p><div class="chips">'+
-      chip('Exam prep',false,'stage','school')+chip('College',false,'stage','college')+chip('Job or internship',false,'stage','work')+'</div></section>';
+    h+='<section class="card"><h2>One quick question</h2><p class="sub" style="margin:6px 0 12px">What are you working towards? Pick the closest one. It sets your default sprint length.</p><div class="chips">'+
+      stageChips(false)+'</div></section>';
   }
   if(S.stage&&!S.style)h+='<section class="card"><h2>How do you like to work?</h2><p class="sub" style="margin:6px 0 14px">Your timers and breaks will follow this. You can change it later in Report.</p><div class="chips">'+STYLES.map(function(x){return chip(esc(x.name)+' · '+x.work+'/'+x.brk,false,'style',x.id);}).join('')+'</div><p class="note" style="margin-top:12px">Work minutes / break minutes. Pomodoro is 25/5.</p></section>';
+  if(S.stage&&S.style&&((!S.profile&&!S.pfSkip)||ui.pfEdit))h+=profileCard();
   if(!hasActivePlan()&&(ui.addOpen||(!S.tasks.length)))h+=addForm(ph);
   h+='<div class="seg3" role="tablist" aria-label="Task filter">'+[['todo','To do',todo.length],['prog','In progress',prog.length],['done','Done',wins.length]].map(function(x){return '<button type="button" role="tab" class="fpill" aria-pressed="'+(f===x[0]?'true':'false')+'" data-action="tf" data-v="'+x[0]+'"><b>'+x[2]+'</b> '+x[1]+'</button>';}).join('')+'</div>';
   var list=f==='todo'?todo:(f==='prog'?prog:[]);
@@ -825,6 +895,70 @@ function vRaceForm(){
     '<p class="note" style="margin-top:10px">Next you answer a few short questions about your situation, so the plan fits you. Only your goal, your answers and the dates are sent to the AI, and only when you tap Continue. '+(ENT.pro?'':'Free plan: one race every '+(Number(ENT.cfg.freeCooldownDays)||3)+' days.')+'</p></section>';
   return h;
 }
+
+/* ---------- plan assistant (Pro) ---------- */
+function chatBox(r){
+  if(r.demo)return '';
+  if(!ENT.pro)return '<section class="card"><div class="tag">Pro</div><h2 style="margin-top:4px">Change this plan by chatting</h2><p class="sub" style="margin:6px 0 12px">Tell the assistant what to change: swap a topic, add a step, shorten the plan, move work to the evening. It asks you questions when it needs them.</p><button type="button" class="btn primary" data-action="gopro3">See Pro</button></section>';
+  var c=ui.chat&&ui.chat.rid===r.id?ui.chat:(ui.chat={rid:r.id,msgs:[],ops:null,busy:false,err:'',draft:''});
+  var h='<section class="card" id="chatCard"><div class="tag">Pro</div><h2 style="margin-top:4px">Change this plan by chatting</h2><p class="sub" style="margin:6px 0 10px">Say what you want different. Nothing changes until you tap Apply.</p>';
+  if(!c.msgs.length)h+='<div class="chips" style="margin-bottom:10px">'+['Make it lighter','Add a revision step','Move the hard work to the morning','Remove the last step'].map(function(x,i){return chip(esc(x),false,'chatq',i);}).join('')+'</div>';
+  c.msgs.forEach(function(m){h+='<div class="'+(m.who==='ai'?'note':'')+'" style="margin:8px 0;'+(m.who==='ai'?'':'font-weight:600')+'">'+(m.who==='ai'?'':'You: ')+esc(m.t)+'</div>';});
+  if(c.ops&&c.ops.length){
+    h+='<div class="card" style="margin:10px 0"><div class="tag">Proposed changes</div><ul class="list">'+c.ops.map(function(o){return '<li class="item"><div class="body"><div class="t">'+esc(opText(r,o))+'</div></div></li>';}).join('')+'</ul><div style="display:flex;gap:8px;margin-top:10px"><button type="button" class="btn primary" data-action="chatapply">Apply</button><button type="button" class="btn ghost" data-action="chatdrop">Not now</button></div></div>';
+  }
+  if(c.busy)h+='<p class="note"><span class="spin"></span>Thinking...</p>';
+  if(c.err)h+='<p class="err" role="alert">'+esc(c.err)+'</p>';
+  h+='<form data-form="chat" class="row" autocomplete="off" style="flex-wrap:nowrap;margin-top:8px"><input id="chIn" type="text" maxlength="500" placeholder="What should change?" aria-label="What should change" value="'+esc(c.draft)+'"'+(c.busy?' disabled':'')+'><button class="btn primary" type="submit"'+(c.busy?' disabled':'')+'>Send</button></form></section>';
+  return h;
+}
+function opText(r,o){
+  var f=o.sid?findStep(r.id,o.sid):null,nm=f?'"'+clip(f.s.text,50)+'"':'';
+  switch(o.op){
+    case 'rename_step':return 'Reword '+nm+' to "'+o.text+'"';
+    case 'set_minutes':return 'Set '+nm+' to '+o.min+' min';
+    case 'remove_step':return 'Remove '+nm;
+    case 'add_step':return 'Add to Lap '+(o.lap+1)+': "'+o.text+'" ('+o.min+' min)';
+    case 'rename_lap':return 'Rename Lap '+(o.lap+1)+' to "'+o.title+'"';
+    case 'set_daily':return 'Daily time: '+o.mins+' min';
+    case 'set_best':return 'Best time of day: '+(PARTN[o.best]||o.best).toLowerCase();
+  }
+  return '';
+}
+async function chatSend(msg){
+  var r=S.races.find(function(x){return x.id===ui.raceOpen;});if(!r)return;
+  var c=ui.chat&&ui.chat.rid===r.id?ui.chat:(ui.chat={rid:r.id,msgs:[],ops:null,busy:false,err:'',draft:''});
+  msg=clip(msg,500);if(msg.length<2||c.busy)return;
+  c.msgs.push({who:'me',t:msg});c.draft='';c.busy=true;c.err='';c.ops=null;render();
+  var body={message:msg,history:c.msgs.slice(0,-1).slice(-6),profile:S.profile||null,race:{name:r.name,goal:r.goal,due:r.due,mins:r.mins,laps:r.laps.map(function(l){return {title:l.title,steps:l.steps.map(function(s){return {id:s.id,text:s.text,min:s.min,done:!!s.done};})};})}};
+  try{
+    var out=await api('/api/plan/edit',body);
+    c.msgs.push({who:'ai',t:clip(out.reply,400)});c.ops=Array.isArray(out.ops)?out.ops:[];
+  }catch(e){
+    if(e&&e.code==='pro_required'){ui.paywall='ai';}
+    else c.err=(e&&e.message)||'The assistant did not answer. Please try again.';
+  }
+  c.busy=false;render();
+}
+function applyOps(r,ops){
+  var n=0;
+  ops.forEach(function(o){
+    var f=o.sid?findStep(r.id,o.sid):null;
+    if(o.op==='rename_step'&&f&&!f.s.done){f.s.text=clip(o.text,120);n++;}
+    else if(o.op==='set_minutes'&&f&&!f.s.done){f.s.min=Math.max(15,Math.min(1200,o.min));n++;}
+    else if(o.op==='remove_step'&&f&&!f.s.done){f.l.steps=f.l.steps.filter(function(x){return x.id!==o.sid;});n++;}
+    else if(o.op==='add_step'&&r.laps[o.lap]){r.laps[o.lap].steps.push({id:uid(),text:clip(o.text,120),min:Math.max(15,Math.min(600,o.min)),done:null,taskId:null});n++;}
+    else if(o.op==='rename_lap'&&r.laps[o.lap]){r.laps[o.lap].title=clip(o.title,40);n++;}
+    else if(o.op==='set_daily'){r.mins=Math.max(10,Math.min(180,o.mins));n++;}
+    else if(o.op==='set_best'&&PARTN[o.best]){r.best=o.best;n++;}
+  });
+  if(r.laps.length>1)r.laps=r.laps.filter(function(l){return l.steps.length;});
+  // Rebuild today's duty from the edited plan.
+  S.tasks=S.tasks.filter(function(t){return !(t.duty&&t.rid===r.id&&!t.done);});
+  r.laps.forEach(function(l){l.steps.forEach(function(s){if(s.taskId&&!taskById(s.taskId))s.taskId=null;});});
+  S.duty[r.id]=null;ensureDuty();save();
+  return n;
+}
 function vRaceDetail(r){
   var st=raceStats(r);
   var h='<div class="row" style="justify-content:space-between"><button type="button" class="btn ghost small" data-action="raceback">All races</button><button type="button" class="btn small primary" data-action="racenew">New race</button></div>'+
@@ -844,6 +978,7 @@ function vRaceDetail(r){
     });
     h+='</ul>'+lapTools(r,l,i,st)+'</section>';
   });
+  h+=chatBox(r);
   h+='<details class="card fold"'+(ui.confirmDel?' open':'')+'><summary>Race settings</summary>'+dueTool(r);
   h+=ui.confirmDel?'<div class="row"><span class="note">Delete this race?</span><button type="button" class="btn small primary" data-action="racedelyes" data-id="'+r.id+'">Yes, delete</button><button type="button" class="btn small" data-action="racedelno">Keep it</button></div>':'<button type="button" class="btn ghost small" data-action="racedel" style="align-self:flex-start">Delete this race</button>';
   h+='</details>';
@@ -912,8 +1047,8 @@ function vReport(){
     '<div class="metric"><div class="k">Follow-through streak<span class="n">'+(o.streak?'Days in a row with a finished task':'Ready when you are.')+'</span></div><div class="val">'+o.streak+' day'+(o.streak===1?'':'s')+'</div></div>'+
     '<div class="metric"><div class="k">Felt focus<span class="n">Your own rating, last 7 days</span></div><div class="val">'+(o.feel==null?'–':o.feel.toFixed(1)+' / 5')+'</div></div></section>';
   h+='<details class="card fold"><summary>Settings and account</summary>'+accountRow()+planRow()+'<div class="lbl">What you are working towards</div><div class="chips">'+
-    chip('Exam prep',S.stage==='school','stage','school')+chip('College',S.stage==='college','stage','college')+chip('Job or internship',S.stage==='work','stage','work')+'</div>'+
-    '<div class="lbl">Look</div><div class="chips">'+chip('Fresh',skinNow()==='fresh','skin','fresh')+chip('Stoic',skinNow()==='stoic','skin','stoic')+chip('Classic',skinNow()==='classic','skin','classic')+'</div><div class="lbl">How you like to work</div><div class="chips">'+STYLES.map(function(x){return chip(esc(x.name)+' · '+x.work+'/'+x.brk,S.style===x.id,'style',x.id);}).join('')+'</div>'+(styleObj()&&styleObj().brk?'<div class="lbl">Longer break after every 4 sprints</div><div class="chips">'+[[0,'Off'],[15,'15 min'],[20,'20 min'],[30,'30 min']].map(function(x){return chip(x[1],(S.longBrk||0)===x[0],'longbrk',x[0]);}).join('')+'</div>':'')+remindRow()+'<div class="lbl">Break and help</div><div class="row">'+(isPaused()?'<button type="button" class="btn small primary" data-action="resumeplan">Resume my plans</button>':'<button type="button" class="btn small" data-action="pauseplan">Pause my plans</button>')+'<button type="button" class="btn small" data-action="tour">Replay the tour</button></div><p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
+    stageChips(true)+'</div>'+
+    '<div class="lbl">Your day</div><div class="row"><button type="button" class="btn small" data-action="pfedit">'+(S.profile?'Change my wake, sleep and busy times':'Set my wake, sleep and busy times')+'</button></div><div class="lbl">Look</div><div class="chips">'+chip('Fresh',skinNow()==='fresh','skin','fresh')+chip('Stoic',skinNow()==='stoic','skin','stoic')+chip('Classic',skinNow()==='classic','skin','classic')+'</div><div class="lbl">How you like to work</div><div class="chips">'+STYLES.map(function(x){return chip(esc(x.name)+' · '+x.work+'/'+x.brk,S.style===x.id,'style',x.id);}).join('')+'</div>'+(styleObj()&&styleObj().brk?'<div class="lbl">Longer break after every 4 sprints</div><div class="chips">'+[[0,'Off'],[15,'15 min'],[20,'20 min'],[30,'30 min']].map(function(x){return chip(x[1],(S.longBrk||0)===x[0],'longbrk',x[0]);}).join('')+'</div>':'')+remindRow()+'<div class="lbl">Break and help</div><div class="row">'+(isPaused()?'<button type="button" class="btn small primary" data-action="resumeplan">Resume my plans</button>':'<button type="button" class="btn small" data-action="pauseplan">Pause my plans</button>')+'<button type="button" class="btn small" data-action="tour">Replay the tour</button></div><p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
     '<div style="margin-top:12px">'+(ui.confirmErase?'<div class="row"><span class="note">'+(ENT.signedIn?'Erase your progress here and in your account?':'Erase everything on this device?')+'</span><button type="button" class="btn small primary" data-action="eraseyes">Yes, erase</button><button type="button" class="btn small" data-action="eraseno">Keep it</button></div>':'<button type="button" class="btn small" data-action="erase">Erase all my data</button>')+'</div>'+deleteAcctRow()+'</details>';
   return h;
 }
@@ -949,7 +1084,7 @@ function normalizeLaps(out,cap){
     var w=steps.reduce(function(a,x){return a+x.min;},0)||1;
     return {title:clip(l&&l.title,40)||'Next lap',focus:clip(l&&l.focus,170),rhythm:clip(l&&l.rhythm,170),milestone:clip(l&&l.milestone,60),weight:w,steps:steps};
   }).filter(function(l){return l.steps.length;});
-  return laps.length>=3?{name:clip(out.race_name,48),realism:clip(out.realism,500),laps:laps}:null;
+  return laps.length>=3?{name:clip(out.race_name,48),realism:clip(out.realism,500),laps:laps,best:PARTN[out.best]?out.best:'',kind2:['study','work','fitness','health','creative','life'].indexOf(out.kind)>=0?out.kind:''}:null;
 }
 function aiOn(){return !!(ENT.cfg.ai&&ENT.cfg.ai.ready);}
 function planErr(f,e){
@@ -1028,7 +1163,7 @@ async function buildRace(){
   if(ui.raceForm!==f)return;
   if(!plan){planErr(f,{code:'ai_failed'});return;}
   var laps=plan.laps,name=plan.name||clip(goal,48);
-  var r=makeRace(goal,name,due,f.mins,laps,ai,false);r.note=note;if(plan&&plan.realism)r.realism=plan.realism;if(useEv)r.event={name:clip(f.event.name,60),date:f.event.date,source:clip(f.event.source,60),note:clip(f.event.note,100)};
+  var r=makeRace(goal,name,due,f.mins,laps,ai,false);r.note=note;if(plan&&plan.realism)r.realism=plan.realism;if(plan&&plan.kind2)r.kind=plan.kind2;if(plan&&plan.best)r.best=plan.best;if(useEv)r.event={name:clip(f.event.name,60),date:f.event.date,source:clip(f.event.source,60),note:clip(f.event.note,100)};
   clearDemo();S.races.unshift(r);ensureDuty();save();
   if(ai&&!ENT.pro)ENT.aiFree=false;
   ui.raceForm=null;ui.raceOpen=r.id;ui.reset=true;render();pingDone('Your plan is ready.');
@@ -1041,6 +1176,15 @@ function act(a,d){
   switch(a){
     case 'tab':ui.fx=true;ui.crewOpen=false;ui.tab=d.v;ui.reset=true;ui.confirmErase=false;ui.confirmDel=false;render();if(d.v==='race')buddyPing(false,true);break;
     case 'stage':S.stage=d.v;save();render();break;
+    case 'pfpeak':readPf();ui.pf.peak=d.v;render();break;
+    case 'pfsave':{readPf();var p=ui.pf,b0=p.busy[0];S.profile={wake:p.wake||'07:00',sleep:p.sleep||'23:00',peak:p.peak||'',busy:(b0&&b0.from&&b0.to)?[{from:b0.from,to:b0.to,label:b0.label||''}]:[]};ui.pf=null;ui.pfEdit=false;save();render();toast('Saved. Today is now sorted for your day.');break;}
+    case 'pfskip':S.pfSkip=true;save();render();break;
+    case 'pfclose':ui.pf=null;ui.pfEdit=false;render();break;
+    case 'pfedit':ui.pf=null;ui.pfEdit=true;ui.tab='today';ui.reset=true;render();break;
+    case 'gopro3':ui.paywall='edit';render();break;
+    case 'chatq':{var qs=['Make it lighter and less packed','Add a revision step near the end','Move the hardest work to the morning','Remove the last step'];chatSend(qs[Number(d.v)]||'');break;}
+    case 'chatapply':{var rc=S.races.find(function(x){return x.id===ui.raceOpen;});if(!rc||!ui.chat||!ui.chat.ops)break;var n=applyOps(rc,ui.chat.ops);ui.chat.ops=null;ui.chat.msgs.push({who:'ai',t:n?'Done. Your plan and today\u2019s list are updated.':'Nothing needed changing.'});render();break;}
+    case 'chatdrop':if(ui.chat){ui.chat.ops=null;ui.chat.msgs.push({who:'ai',t:'Okay, nothing changed. What would you like instead?'});render();}break;
     case 'toggle':{var t=taskById(d.id);if(!t)break;if(t.done){t.done=null;save();render();}else{completeTask(d.id);render();toast(winMsg());}break;}
     case 'start2':startSprint(d.id,2);break;
     case 'startt':startSprint(d.id,taskLen(taskById(d.id)));break;
@@ -1169,6 +1313,7 @@ document.addEventListener('input',function(e){
   else if(/^qa\d+$/.test(el.id)&&ui.raceForm&&ui.raceForm.qs){var qi=ui.raceForm.qs[Number(el.id.slice(2))];if(qi)qi.a=el.value;}
   else if(el.id==='evDate'&&ui.raceForm&&ui.raceForm.event){ui.raceForm.event.date=el.value;}
   else if(el.id==='demoName'){ui.demoName=el.value;}
+  else if(el.id==='chIn'&&ui.chat){ui.chat.draft=el.value;}
 });
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!ui.conflict&&ENT.signedIn){if(ui.login){ui.login=false;ui.afterLogin='';render();}else if(ui.paywall){ui.paywall=null;ui.payErr='';render();}}
   if(e.key==='Enter'&&e.target&&e.target.id==='demoName'){e.preventDefault();act('demologin',{});}});
@@ -1182,6 +1327,8 @@ document.addEventListener('submit',function(e){
     S.tasks.push({id:uid(),title:title,step:step,when:clip($('#tWhen').value,80),min:ui.draft.min>2?ui.draft.min:undefined,created:Date.now(),started:null,done:null});ui.addOpen=false;ui.tf='todo';
     ui.draft={title:'',step:'',when:'',min:0,edited:false};save();render();toast(tn('Added. Start with the first step: 2 minutes.','Added. Begin with the first step: two minutes.'));
     if(showTour()&&TOUR[ui.tourStep].wait==='task')tourGo(tIdx('start'));
+  }else if(f.getAttribute('data-form')==='chat'){
+    chatSend(($('#chIn')||{}).value);
   }else{
     var txt=clip($('#parkIn').value,120);if(!txt)return;
     S.parked.unshift({id:uid(),text:txt,ts:Date.now()});save();render();var p=$('#parkIn');if(p)p.focus();

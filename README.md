@@ -123,3 +123,7 @@ public/          the app (index.html, app.js, style.css)
 .replit          Replit run and deploy settings
 .env.example     every Secret name
 ```
+
+## Plan assistant and your day
+- **Your day**: Today asks wake time, sleep time, busy hours and your clearest time of day. Tasks are sorted into windows like "Morning · 6:30 AM–7 AM". Works for any goal (study, fitness, work, creative); several plans are fitted into one day by finish date.
+- **Plan assistant (Pro)**: in a race, chat to reword, add, remove or re-time steps. It asks follow-up questions and changes nothing until you tap Apply. Endpoint `POST /api/plan/edit` (60 a day per user).
