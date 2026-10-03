@@ -382,6 +382,40 @@ async function suggestMethod(){
   }catch(e){ui.mAI={key:key,err:e.code==='login_required'?'Sign in to use this.':'The AI could not answer just now. Pick a method yourself.'};}
   ui.mBusy=false;render();
 }
+/* ---------- focus lock (Android app only): pauses chosen apps while a sprint runs ---------- */
+function nat(){try{return window.Android&&window.Android.status?JSON.parse(window.Android.status()):null;}catch(e){return null;}}
+var blockEnd=0;
+function lockOn(){return lget('startline.lock')!=='0';}
+function syncBlock(){
+  if(!window.Android||!window.Android.start)return;
+  var T=S.timer,want=!!(T&&!T.ended&&!T.paused&&!T.brk&&T.endAt>Date.now()&&lockOn());
+  try{
+    if(want){if(blockEnd!==T.endAt){window.Android.start(String(T.endAt));blockEnd=T.endAt;}}
+    else if(blockEnd){window.Android.stop();blockEnd=0;}
+  }catch(e){}
+}
+function lockCard(){
+  var n=nat();if(!n)return '';
+  var ok=n.usage&&n.overlay;
+  var h='<section class="card"><h2>Focus lock</h2>';
+  if(!ok){
+    h+='<p class="sub" style="margin:6px 0 12px">While a sprint runs, apps like Instagram, YouTube and WhatsApp are paused. To do this, Startline needs two permissions. You switch them on yourself in Settings. We only check which app is open during a sprint, and nothing leaves your phone.</p>'+
+      '<div class="row"><button type="button" class="btn'+(n.usage?'':' primary')+'" data-action="lockusage">'+(n.usage?'✓ ':'1. ')+'Allow usage access</button>'+
+      '<button type="button" class="btn'+(n.usage&&!n.overlay?' primary':'')+'" data-action="lockoverlay">'+(n.overlay?'✓ ':'2. ')+'Allow display over other apps</button></div>'+
+      '<p class="note" style="margin-top:10px">In the list, find Startline and switch it on. Then come back here.</p>';
+  }else{
+    var on=lockOn();
+    h+='<p class="sub" style="margin:6px 0 12px">'+(on?'Chosen apps are paused while your timer runs. Breaks are free.':'The lock is off. Apps stay open during sprints.')+'</p>'+
+      '<div class="chips">'+chip('Lock '+(on?'on':'off'),on,'locktoggle','x')+chip(ui.lockOpen?'Hide apps':'Choose apps',false,'lockapps','x')+'</div>';
+    if(ui.lockOpen){
+      h+='<div class="chips" style="margin-top:12px;max-height:240px;overflow-y:auto">'+(ui.lockApps?ui.lockApps.map(function(a){return chip(esc(a.n),!!a.on,'lockapp',a.p);}).join(''):'<span class="note">Loading...</span>')+'</div>';
+    }
+  }
+  return h+'</section>';
+}
+function loadLockApps(){
+  try{var a=JSON.parse(window.Android.apps());a.sort(function(x,y){return (y.on-x.on)||x.n.toLowerCase().localeCompare(y.n.toLowerCase());});ui.lockApps=a;}catch(e){ui.lockApps=[];}
+}
 function styleObj(){return S.style?STYLES.find(function(x){return x.id===S.style;})||null:null;}
 function defLen(){var st=styleObj();return st?st.work:(S.stage==='school'?15:25);}
 function taskLen(t){
@@ -510,6 +544,7 @@ function tick(){
 }
 setInterval(tick,250);
 document.addEventListener('visibilitychange',tick);
+window.addEventListener('focus',function(){if(window.Android&&window.Android.status&&ui.tab==='focus')render();});
 
 /* ---------- task actions ---------- */
 function completeTask(id){
@@ -649,7 +684,7 @@ function vFocus(){
       '<div class="lbl">Length</div><div class="chips">'+
       lenChips(len).map(function(m){return chip(m===2?'2 min · starter':m+' min',len===m,'setlen',m);}).join('')+'</div>'+
       '<div style="margin-top:16px"><button type="button" class="btn primary big" data-action="startFocus">Start '+len+'-minute sprint</button></div></section>';
-    return h+parkCard();
+    return h+lockCard()+parkCard();
   }
   var t=T.taskId?taskById(T.taskId):null;
   if(T.ended){
@@ -675,6 +710,7 @@ function vFocus(){
     (ENT.cfg.testMode?'<button type="button" class="btn ghost small" data-action="skip">Prototype: jump to end</button>':'')+'</div>'+
     (T.paused?'<p class="note" style="margin-top:10px">Paused. The clock is stopped until you resume.</p>':'')+'</section>';
   if(T.brk)h+=maximCard();
+  if(nat()&&lockOn()&&!T.brk&&!T.ended)h+='<p class="note" style="text-align:center">Focus lock is on. Chosen apps are paused until the timer ends.</p>';
   return h+parkCard();
 }
 function raceStats(r){
@@ -864,6 +900,7 @@ function render(){
   ui.fx=false;
   tourPaint();
   tourApply();
+  syncBlock();
 }
 
 /* ---------- race building ---------- */
@@ -980,6 +1017,11 @@ function act(a,d){
     case 'brk':if(d.id==='long')S.cycle={n:0,at:Date.now()};startBreak(Number(d.v));break;
     case 'longbrk':S.longBrk=Number(d.v);save();render();break;
     case 'remove':S.tasks=S.tasks.filter(function(x){return x.id!==d.id;});if(S.timer&&S.timer.taskId===d.id)S.timer.taskId=null;S.races.forEach(function(r){r.laps.forEach(function(l){l.steps.forEach(function(s){if(s.taskId===d.id)s.taskId=null;});});});save();render();break;
+    case 'lockusage':try{window.Android.openUsage();}catch(e){}break;
+    case 'lockoverlay':try{window.Android.openOverlay();}catch(e){}break;
+    case 'locktoggle':lset('startline.lock',lockOn()?'0':'1');syncBlock();render();break;
+    case 'lockapps':ui.lockOpen=!ui.lockOpen;if(ui.lockOpen)loadLockApps();render();break;
+    case 'lockapp':{var la=(ui.lockApps||[]).find(function(x){return x.p===d.v;});if(la){la.on=!la.on;try{window.Android.setBlocked(JSON.stringify(ui.lockApps.filter(function(x){return x.on;}).map(function(x){return x.p;})));}catch(e){}render();}break;}
     case 'method':{var mm=methodById(d.v);if(!mm)break;ui.method=(ui.method&&ui.method.id===mm.id&&!ui.method.ai)?null:{id:mm.id,name:mm.name,note:mm.note,len:mm.len};if(ui.method&&mm.len)ui.len=mm.len;render();break;}
     case 'mai':suggestMethod();break;
     case 'muse':if(ui.mAI&&ui.mAI.m){ui.method=ui.mAI.m;if(ui.method.len)ui.len=Math.min(90,Math.max(5,ui.method.len));render();}break;
