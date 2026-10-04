@@ -134,7 +134,7 @@ function wipeLocal(){
   clearTimeout(syncT);
   ['startline.v1','startline.eta','startline.tour','startline.nudge','startline.nick','startline.buddy','startline.sync'].forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});
   S=fresh();seedDemo();
-  ui.tab='today';ui.raceOpen=null;ui.raceForm=null;ui.focusTask='';ui.crewOpen=false;ui.lapOpen=null;ui.confirmErase=false;ui.confirmDelAcct=false;ui.tourOn=undefined;ui.tourStep=0;ui.conflict=null;ui.reset=true;
+  ui.tab='today';ui.raceOpen=null;ui.raceForm=null;ui.focusTask='';ui.crewOpen=false;ui.lapOpen={};ui.confirmErase=false;ui.confirmDelAcct=false;ui.tourOn=undefined;ui.tourStep=0;ui.conflict=null;ui.reset=true;
   save(true);
 }
 function scheduleSync(){
@@ -883,7 +883,7 @@ function vRaceForm(){
     });
     if(f.event)h+='<section class="card"><div class="tag">Real date found</div><h2 style="margin-top:6px">'+esc(f.event.name)+'</h2><p class="sub" style="margin:6px 0 10px">'+esc(fmtDateY(f.event.date))+' · '+Math.ceil((parseYmd(f.event.date)-startOfDay(Date.now()))/DAY)+' days from today.'+(f.event.note?' '+esc(f.event.note)+'.':'')+' '+(f.event.source?'Source: '+esc(f.event.source)+'. ':'')+'Always confirm on the official site.</p><div class="chips">'+chip('Plan to this date',f.useEvent,'evon',1)+chip('Use my own timeline',!f.useEvent,'evon',0)+'</div>'+(f.useEvent?'<label class="lbl" for="evDate">Wrong date? Change it</label><input id="evDate" type="date" value="'+esc(f.event.date)+'" style="max-width:190px">':'')+'</section>';
     if(f.err)h+='<p class="err" role="alert">'+esc(f.err)+'</p>';
-    h+='<button type="button" class="btn primary big" data-action="racebuild">Build my plan</button><button type="button" class="btn ghost" data-action="raceskipq">Skip the questions</button><button type="button" class="btn ghost" data-action="racebasic">Use a basic plan instead (no AI)</button>';
+    h+='<button type="button" class="btn primary big" data-action="racebuild">Build my plan</button><button type="button" class="btn ghost" data-action="raceskipq">Skip the questions</button>';
     return h;
   }
   var wk=[[4,'4 weeks'],[8,'8 weeks'],[12,'12 weeks'],[26,'6 months'],[52,'1 year'],[78,'18 months'],[104,'2 years']];
@@ -968,7 +968,7 @@ function vRaceDetail(r){
   h+=vRoute(r);
   r.laps.forEach(function(l,i){
     var d=l.steps.filter(function(s){return s.done;}).length;
-    if(!(i===st.cur||ui.lapOpen[l.id])){h+='<button type="button" class="card racecard lapsum" data-action="lapopen" data-v="'+l.id+'"><div><div class="tag">'+(d===l.steps.length?'Done':'By '+esc(fmtDate(l.due)))+'</div><h2 style="margin-top:4px">Lap '+(i+1)+' · '+esc(l.title)+'</h2></div><span class="tag mono">'+d+'/'+l.steps.length+' steps</span></button>';return;}
+    if(!(i===st.cur||(ui.lapOpen&&ui.lapOpen[l.id]))){h+='<button type="button" class="card racecard lapsum" data-action="lapopen" data-v="'+l.id+'"><div><div class="tag">'+(d===l.steps.length?'Done':'By '+esc(fmtDate(l.due)))+'</div><h2 style="margin-top:4px">Lap '+(i+1)+' · '+esc(l.title)+'</h2></div><span class="tag mono">'+d+'/'+l.steps.length+' steps</span></button>';return;}
     h+='<section class="card lap"><div class="laphead"><h2>Lap '+(i+1)+' · '+esc(l.title)+'</h2><span class="tag">by '+esc(fmtDate(l.due))+' · '+d+'/'+l.steps.length+'</span></div>'+(l.focus?'<p class="sub" style="margin:4px 0 6px">'+esc(l.focus)+'</p>':'')+(l.rhythm?'<p class="note mono" style="margin:0 0 8px">Weekly rhythm: '+esc(l.rhythm)+'</p>':'')+'<ul class="list">';
     l.steps.forEach(function(s){
       var tk=s.taskId?taskById(s.taskId):null,inToday=tk&&!tk.done;
@@ -1117,6 +1117,17 @@ function planBody(f,extra){
   return b;
 }
 function evOk(e){return !!(e&&/^\d{4}-\d{2}-\d{2}$/.test(String(e.date))&&parseYmd(e.date)>=addDays(startOfDay(Date.now()),14)&&parseYmd(e.date)<=addDays(startOfDay(Date.now()),730));}
+function saveDraft(){
+  var f=ui.raceForm;if(!f)return;
+  if(clip(f.goal,160).length<1&&!(f.qs||[]).some(function(q){return q.a;})){S.rdraft=null;save(true);return;}
+  var q=f.step==='questions'&&f.qs&&f.qs.length;
+  S.rdraft={goal:clip(f.goal,160),weeks:f.weeks,mins:f.mins,step:q?'questions':'goal',qs:q?f.qs.map(function(x){return {q:x.q,options:x.options||[],a:clip(x.a,240)};}):[],event:q&&f.event?f.event:null,useEvent:!!f.useEvent};
+  save(true);
+}
+function restoreDraft(){
+  var d=S.rdraft;if(!d||typeof d!=='object')return null;
+  return {goal:clip(d.goal,160),weeks:Number(d.weeks)||8,mins:Number(d.mins)||30,loading:false,err:'',step:d.step==='questions'&&Array.isArray(d.qs)&&d.qs.length?'questions':'goal',qs:Array.isArray(d.qs)?d.qs:[],event:d.event||null,useEvent:!!d.useEvent};
+}
 function needLogin(){var f=ui.raceForm;if(f)f.loading=false;ui.afterLogin='plan';ui.login=true;render();}
 async function nextStep(){
   var f=ui.raceForm;if(!f)return;
@@ -1131,7 +1142,7 @@ async function nextStep(){
     ui.abort=null;if(ui.raceForm!==f)return;
     f.qs=(out.questions||[]).map(function(q){return {q:clip(q.q,140),options:(q.options||[]).map(function(o){return clip(o,40);}),a:''};});
     if(f.qs.length<2)throw {code:'bad_shape'};
-    etaSave('questions',Date.now()-f.t0);f.event=out.event&&evOk(out.event)?out.event:null;f.useEvent=!!f.event;f.step='questions';f.loading=false;ui.reset=true;render();pingDone('Your questions are ready.',1);
+    etaSave('questions',Date.now()-f.t0);f.event=out.event&&evOk(out.event)?out.event:null;f.useEvent=!!f.event;f.step='questions';f.loading=false;ui.reset=true;saveDraft();render();pingDone('Your questions are ready.',1);
   }catch(e){
     ui.abort=null;if(ui.raceForm!==f)return;
     if(e&&e.name==='AbortError'){f.loading=false;render();return;}
@@ -1164,7 +1175,7 @@ async function buildRace(){
   if(!plan){planErr(f,{code:'ai_failed'});return;}
   var laps=plan.laps,name=plan.name||clip(goal,48);
   var r=makeRace(goal,name,due,f.mins,laps,ai,false);r.note=note;if(plan&&plan.realism)r.realism=plan.realism;if(plan&&plan.kind2)r.kind=plan.kind2;if(plan&&plan.best)r.best=plan.best;if(useEv)r.event={name:clip(f.event.name,60),date:f.event.date,source:clip(f.event.source,60),note:clip(f.event.note,100)};
-  clearDemo();S.races.unshift(r);ensureDuty();save();
+  clearDemo();S.races.unshift(r);S.rdraft=null;ensureDuty();save();
   if(ai&&!ENT.pro)ENT.aiFree=false;
   ui.raceForm=null;ui.raceOpen=r.id;ui.reset=true;render();pingDone('Your plan is ready.');
   toast('Your plan is ready. Today\u2019s work is already on your list.');
@@ -1223,18 +1234,18 @@ function act(a,d){
     case 'notyet':case 'dismiss':S.timer=null;save();render();break;
     case 'momentum':if(T&&T.taskId)startSprint(T.taskId,defLen());break;
     case 'unpark':S.parked=S.parked.filter(function(x){return x.id!==d.id;});save();render();break;
-    case 'racenew':if(!ENT.pro&&freeRaceWait()>0){ui.paywall='races';render();break;}ui.raceOpen=null;ui.raceForm={goal:'',weeks:8,mins:30,loading:false,err:'',step:'goal',qs:[]};ui.reset=true;render();var g=$('#rGoal');if(g)g.focus();break;
+    case 'racenew':if(!ENT.pro&&freeRaceWait()>0){ui.paywall='races';render();break;}ui.raceOpen=null;ui.raceForm=restoreDraft()||{goal:'',weeks:8,mins:30,loading:false,err:'',step:'goal',qs:[]};ui.reset=true;render();var g=$('#rGoal');if(g)g.focus();break;
     case 'racenotify':try{Notification.requestPermission().then(function(p){ui.notify=(p==='granted');if(ui.raceForm&&ui.raceForm.loading)render();});}catch(e){}break;
     case 'tour':ui.tourOn=true;tourGo(0);break;
     case 'tournext':tourGo(ui.tourStep+1);break;
     case 'tourback':tourGo(ui.tourStep-1);break;
     case 'tourdone':lset('startline.tour','1');ui.tourOn=false;ui.tourStep=0;ui.tab='today';ui.crewOpen=false;ui.raceOpen=null;ui.reset=true;render();break;
     case 'crewopen':ui.crewOpen=true;ui.reset=true;render();buddyPing(false,true);break;
-    case 'lapopen':ui.lapOpen[d.v]=true;render();break;
-    case 'raceback':if(ui.crewOpen){ui.crewOpen=false;ui.reset=true;render();break;}if(ui.raceForm){if(!ui.raceForm.loading){ui.raceForm=null;render();}}else{ui.raceOpen=null;ui.confirmDel=false;ui.reset=true;render();}break;
+    case 'lapopen':ui.lapOpen=ui.lapOpen||{};ui.lapOpen[d.v]=true;render();break;
+    case 'raceback':if(ui.crewOpen){ui.crewOpen=false;ui.reset=true;render();break;}if(ui.raceForm){if(!ui.raceForm.loading){saveDraft();ui.raceForm=null;render();}}else{ui.raceOpen=null;ui.confirmDel=false;ui.reset=true;render();}break;
     case 'raceopen':ui.raceOpen=d.id;ui.reset=true;render();break;
-    case 'rweeks':ui.raceForm.weeks=Number(d.v);render();break;
-    case 'rmins':ui.raceForm.mins=Number(d.v);render();break;
+    case 'rweeks':ui.raceForm.weeks=Number(d.v);saveDraft();render();break;
+    case 'rmins':ui.raceForm.mins=Number(d.v);saveDraft();render();break;
     case 'racenext':nextStep();break;
     case 'racebuild':buildRace(false);break;
     case 'raceskipq':ui.raceForm.qs=[];buildRace(false);break;
@@ -1254,7 +1265,7 @@ function act(a,d){
     case 'racedue':(function(){var r=S.races.find(function(x){return x.id===d.id;}),v=($('#rDue')||{}).value;if(!r||!/^\d{4}-\d{2}-\d{2}$/.test(v||''))return;var t=parseYmd(v);if(t<addDays(startOfDay(Date.now()),1)||t>addDays(startOfDay(Date.now()),730)){toast('Pick a date within the next 2 years.');return;}r.due=v;if(r.event){r.event.date=v;r.event.note='date edited by you';}respread(r);save();render();toast('Finish date updated. Laps re-planned.');})();break;
     case 'seen':S.seen[d.v]=1;save();render();break;
     case 'newprefill':ui.tab='race';act('racenew',{});if(ui.raceForm){var tp=TPL[Number(d.v)]||TPL[0];ui.raceForm.goal=d.v==='4'?'Do well this semester':tp[1];ui.raceForm.weeks=d.v==='4'?16:tp[2];render();}break;
-    case 'rtpl':if(ui.raceForm){var tq=TPL[Number(d.v)];if(tq){ui.raceForm.goal=tq[1];ui.raceForm.weeks=tq[2];render();}}break;
+    case 'rtpl':if(ui.raceForm){var tq=TPL[Number(d.v)];if(tq){ui.raceForm.goal=tq[1];ui.raceForm.weeks=tq[2];saveDraft();render();}}break;
     case 'evon':if(ui.raceForm){ui.raceForm.useEvent=d.v==='1';render();}break;
     case 'sharecard':shareCard();break;
     case 'remind':(function(){
@@ -1309,8 +1320,8 @@ document.addEventListener('input',function(e){
     if(!ui.draft.edited){var st=$('#tStep');var sg=el.value.trim()?suggestStep(el.value):'';if(st)st.value=sg;ui.draft.step=sg;}
   }else if(el.id==='tStep'){ui.draft.step=el.value;ui.draft.edited=true;}
   else if(el.id==='tWhen'){ui.draft.when=el.value;}
-  else if(el.id==='rGoal'&&ui.raceForm){ui.raceForm.goal=el.value;}
-  else if(/^qa\d+$/.test(el.id)&&ui.raceForm&&ui.raceForm.qs){var qi=ui.raceForm.qs[Number(el.id.slice(2))];if(qi)qi.a=el.value;}
+  else if(el.id==='rGoal'&&ui.raceForm){ui.raceForm.goal=el.value;saveDraft();}
+  else if(/^qa\d+$/.test(el.id)&&ui.raceForm&&ui.raceForm.qs){var qi=ui.raceForm.qs[Number(el.id.slice(2))];if(qi){qi.a=el.value;saveDraft();}}
   else if(el.id==='evDate'&&ui.raceForm&&ui.raceForm.event){ui.raceForm.event.date=el.value;}
   else if(el.id==='demoName'){ui.demoName=el.value;}
   else if(el.id==='chIn'&&ui.chat){ui.chat.draft=el.value;}
