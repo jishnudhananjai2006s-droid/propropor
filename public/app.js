@@ -733,17 +733,36 @@ function weekStrip(){
     h+='<div class="d'+cls+'" role="listitem" aria-label="'+new Date(d).toLocaleDateString(undefined,{weekday:'long',day:'numeric'})+(done[d]?', active':'')+'"><span>'+L[i]+'</span><b>'+new Date(d).getDate()+'</b><i></i></div>';}
   return h+'</div>';
 }
+function nextAhead(r){
+  for(var i=0;i<r.laps.length;i++)for(var j=0;j<r.laps[i].steps.length;j++){
+    var st=r.laps[i].steps[j];if(st.done)continue;
+    var tk=st.taskId?taskById(st.taskId):null;if(tk&&!tk.done)continue;
+    return {l:r.laps[i],s:st};
+  }
+  return null;
+}
+function sprintFor(t){var f=ui.free;return f?Math.max(2,Math.min(f,t.min||f)):taskLen(t);}
 function planToday(){
   var day=ymd(Date.now()),g={};
-  S.tasks.forEach(function(t){if(t.duty&&t.rid&&t.duty===day){var x=g[t.rid]=g[t.rid]||{n:0,d:0,m:0,dm:0};x.n++;x.m+=t.min||0;if(t.done){x.d++;x.dm+=t.min||0;}}});
+  S.tasks.forEach(function(t){if(t.duty&&t.rid&&t.duty===day){var x=g[t.rid]=g[t.rid]||{n:0,d:0,m:0,open:[]};x.n++;x.m+=t.min||0;if(t.done)x.d++;else x.open.push(t);}});
   var rows=S.races.filter(function(r){return !r.demo&&(g[r.id]||r.laps.some(function(l){return l.steps.some(function(s){return !s.done;});}));});
   if(!rows.length)return '';
-  return '<section class="card"><h2>Today by plan</h2><ul class="list" style="margin-top:8px">'+rows.map(function(r){
-    var x=g[r.id];
-    if(!x)return '<li class="item" style="display:block"><div class="row" style="justify-content:space-between"><div class="t" style="overflow-wrap:anywhere">'+esc(r.name)+'</div><button type="button" class="btn small primary" data-action="dutyfix" data-id="'+r.id+'">Add today\u2019s work</button></div></li>';
-    var pct=x.n?Math.round(x.d/x.n*100):0;
-    return '<li class="item" style="display:block"><div class="row" style="justify-content:space-between"><div class="t" style="overflow-wrap:anywhere">'+esc(r.name)+'</div><span class="tag mono">'+x.d+'/'+x.n+' · '+x.m+' min</span></div><div class="bar" style="margin-top:6px"><i style="width:'+pct+'%"></i></div></li>';
-  }).join('')+'</ul></section>';
+  var pd=ui.pd||{};
+  var h='<section class="card"><h2>Free right now?</h2><p class="sub" style="margin:4px 0 8px">Every goal, and what you can do for it today. Tap one to begin.</p><div class="chips" style="margin-bottom:8px">'+[[15,'15 min'],[30,'30 min'],[60,'1 hour'],[0,'Any']].map(function(x){return chip(x[1],(ui.free||0)===x[0],'freeset',x[0]);}).join('')+'</div><ul class="list">';
+  rows.forEach(function(r){
+    var x=g[r.id],nm='<div class="t" style="overflow-wrap:anywhere">'+esc(r.name)+'</div>',pct=x&&x.n?Math.round(x.d/x.n*100):0,body,btn;
+    if(x&&x.open.length){
+      x.open.sort(function(a,b){return (!!b.started-!!a.started)||((pd[a.id]?pd[a.id].s:99999)-(pd[b.id]?pd[b.id].s:99999));});
+      var t=x.open[0];body='<div class="s">'+(t.started?'In progress: ':'Next: ')+esc(clip(t.title,70))+'</div>';
+      btn='<button type="button" class="btn small primary" data-action="gonext" data-id="'+t.id+'">'+(t.started?'Continue':'Start')+' '+sprintFor(t)+' min</button>';
+    }else{
+      var na=nextAhead(r);
+      if(na){body='<div class="s">Done for today. Get ahead: '+esc(clip(na.s.text,70))+'</div>';btn='<button type="button" class="btn small" data-action="ahead" data-id="'+r.id+'">Get ahead '+Math.min(ui.free||30,Math.max(5,na.s.min-(na.s.spent||0)))+' min</button>';}
+      else{body='<div class="s">Everything planned is done.</div>';btn='';}
+    }
+    h+='<li class="item" style="display:block"><div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px"><div style="min-width:0">'+nm+body+'</div>'+btn+'</div>'+(x?'<div class="bar" style="margin-top:6px"><i style="width:'+pct+'%"></i></div><div class="note mono" style="margin-top:2px">'+x.d+'/'+x.n+' done today</div>':'')+'</li>';
+  });
+  return h+'</ul></section>';
 }
 function taskCard(t){
   var meta=(t.min?'<span class="pill">'+t.min+' min</span>':'')+(t.part?'<span class="pill">'+esc(t.part)+'</span>':'')+(t.rid&&S.races.length>1?(function(){var rr=S.races.find(function(x){return x.id===t.rid;});return rr?'<span class="pill">'+esc(clip(rr.name,22))+'</span>':'';})():'')+(t.lap?'<span class="pill">'+esc(t.lap)+'</span>':'')+(ui.pd&&ui.pd[t.id]?'<span class="pill on">'+esc(ui.pd[t.id].label)+'</span>':'')+(t.when?'<span class="pill">'+esc(t.when)+'</span>':'')+(t.started?'<span class="pill on">Started</span>':'');
@@ -1256,6 +1275,9 @@ function act(a,d){
     case 'setcustomlen':{var cv=Math.round(Number(($('#cLen')||{}).value));if(!(cv>=1&&cv<=180)){toast('Type a number from 1 to 180.');break;}ui.len=cv;render();break;}
     case 'customsave':{var w=Math.round(Number(($('#cWork')||{}).value)),bk=Math.round(Number(($('#cBrk')||{}).value));if(!(w>=1&&w<=180)||!(bk>=0&&bk<=60)){toast('Work 1 to 180 minutes, break 0 to 60.');break;}S.custom={work:w,brk:bk};ui.len=null;ui.styleEdit=false;save();render();toast('Your timer is saved.');break;}
     case 'dutyfix':S.duty[d.id]=null;ensureDuty();ui.tf='todo';save();render();break;
+    case 'freeset':ui.free=Number(d.v)||0;render();break;
+    case 'gonext':{var gt=taskById(d.id);if(gt)startSprint(gt.id,sprintFor(gt));break;}
+    case 'ahead':{var ar=S.races.find(function(x){return x.id===d.id;}),na2=ar?nextAhead(ar):null;if(!na2)break;var left=Math.max(5,na2.s.min-(na2.s.spent||0)),ch=Math.min(left,ui.free||30);if(left>ch&&left-ch<10)ch=left;var nt={id:uid(),title:na2.s.text,step:suggestStep(na2.s.text),min:ch,created:Date.now(),started:null,done:null,duty:ymd(Date.now()),rid:ar.id,sid:na2.s.id,part:ch<left?'Part of a '+Math.round(na2.s.min/5)*5+' min step':'',lap:na2.l.title,bonus:1};S.tasks.push(nt);na2.s.taskId=nt.id;save();startSprint(nt.id,ui.free?Math.max(2,Math.min(ui.free,ch)):taskLen(nt));break;}
     case 'tset':ui.focusTask=d.id;ui.len=null;ui.tab='focus';ui.reset=true;render();break;
     case 'startFocus':startSprint(ui.focusTask||null,ui.len||defLen());break;
     case 'pause':if(strictRunning())break;if(T&&!T.paused){T.remainMs=Math.max(0,T.endAt-Date.now());T.paused=true;save();render();}break;
