@@ -731,8 +731,18 @@ function weekStrip(){
     h+='<div class="d'+cls+'" role="listitem" aria-label="'+new Date(d).toLocaleDateString(undefined,{weekday:'long',day:'numeric'})+(done[d]?', active':'')+'"><span>'+L[i]+'</span><b>'+new Date(d).getDate()+'</b><i></i></div>';}
   return h+'</div>';
 }
+function planToday(){
+  var day=ymd(Date.now()),g={};
+  S.tasks.forEach(function(t){if(t.duty&&t.rid&&t.duty===day){var x=g[t.rid]=g[t.rid]||{n:0,d:0,m:0,dm:0};x.n++;x.m+=t.min||0;if(t.done){x.d++;x.dm+=t.min||0;}}});
+  var rows=S.races.filter(function(r){return !r.demo&&g[r.id];});
+  if(!rows.length)return '';
+  return '<section class="card"><h2>Today by plan</h2><ul class="list" style="margin-top:8px">'+rows.map(function(r){
+    var x=g[r.id],pct=x.n?Math.round(x.d/x.n*100):0;
+    return '<li class="item" style="display:block"><div class="row" style="justify-content:space-between"><div class="t" style="overflow-wrap:anywhere">'+esc(r.name)+'</div><span class="tag mono">'+x.d+'/'+x.n+' · '+x.m+' min</span></div><div class="bar" style="margin-top:6px"><i style="width:'+pct+'%"></i></div></li>';
+  }).join('')+'</ul></section>';
+}
 function taskCard(t){
-  var meta=(t.min?'<span class="pill">'+t.min+' min</span>':'')+(t.part?'<span class="pill">'+esc(t.part)+'</span>':'')+(t.lap?'<span class="pill">'+esc(t.lap)+'</span>':'')+(ui.pd&&ui.pd[t.id]?'<span class="pill on">'+esc(ui.pd[t.id].label)+'</span>':'')+(t.when?'<span class="pill">'+esc(t.when)+'</span>':'')+(t.started?'<span class="pill on">Started</span>':'');
+  var meta=(t.min?'<span class="pill">'+t.min+' min</span>':'')+(t.part?'<span class="pill">'+esc(t.part)+'</span>':'')+(t.rid&&S.races.length>1?(function(){var rr=S.races.find(function(x){return x.id===t.rid;});return rr?'<span class="pill">'+esc(clip(rr.name,22))+'</span>':'';})():'')+(t.lap?'<span class="pill">'+esc(t.lap)+'</span>':'')+(ui.pd&&ui.pd[t.id]?'<span class="pill on">'+esc(ui.pd[t.id].label)+'</span>':'')+(t.when?'<span class="pill">'+esc(t.when)+'</span>':'')+(t.started?'<span class="pill on">Started</span>':'');
   return '<li class="card tcard"><button type="button" class="check" data-action="toggle" data-id="'+t.id+'" aria-label="Mark done: '+esc(t.title)+'"></button>'+
     '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="s">First step: '+esc(t.step)+'</div>'+(meta?'<div class="meta">'+meta+'</div>':'')+'</div>'+
     '<div class="acts">'+(t.min>2?'<button type="button" class="btn small primary"'+(ui.tourTaskId===t.id?' data-tour="start"':'')+' data-action="startt" data-id="'+t.id+'">Start '+taskLen(t)+' min</button><button type="button" class="btn small" data-action="start2" data-id="'+t.id+'">Just 2 min</button><button type="button" class="btn small" data-action="tset" data-id="'+t.id+'">Set time</button>':'<button type="button" class="btn small primary"'+(ui.tourTaskId===t.id?' data-tour="start"':'')+' data-action="start2" data-id="'+t.id+'">Start 2 min</button>')+
@@ -762,7 +772,7 @@ function vToday(){
     (hasActivePlan()?'':'<button type="button" class="roundbtn" data-action="addtoggle" aria-label="Add a task" aria-expanded="'+(ui.addOpen?'true':'false')+'">'+(ui.addOpen?'×':'+')+'</button>')+'</div>';
   h+=maximCard();
   h+=welcomeBack()+seasonCard();
-  h+=ringCard(wins,open,sess,mins)+weekStrip();
+  h+=ringCard(wins,open,sess,mins)+planToday()+weekStrip();
   if(!S.stage){
     h+='<section class="card"><h2>One quick question</h2><p class="sub" style="margin:6px 0 12px">What are you working towards? Pick the closest one. It sets your default sprint length.</p><div class="chips">'+
       stageChips(false)+'</div></section>';
