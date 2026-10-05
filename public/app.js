@@ -354,6 +354,14 @@ var METHODS=[
  {id:'mix',name:'Mix topics',note:'Switch between 2 or 3 topics in one session instead of one long block.',len:45},
  {id:'chunk',name:'Small chunks',note:'Split it into tiny parts. Finish one part before the next.',len:15}
 ];
+function styleChips(on){
+  return STYLES.map(function(x){return chip(esc(x.name)+' · '+x.work+'/'+x.brk,on&&S.style===x.id,'style',x.id);}).join('')+chip('My own timer',on&&S.style==='custom','style','custom');
+}
+function customRow(){
+  if(S.style!=='custom')return '';
+  var c=styleObj();
+  return '<div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px"><label class="note" for="cWork">Work</label><input id="cWork" type="number" min="1" max="180" value="'+c.work+'" style="max-width:80px"><label class="note" for="cBrk">Break</label><input id="cBrk" type="number" min="0" max="60" value="'+c.brk+'" style="max-width:80px"><span class="note">minutes</span><button type="button" class="btn small" data-action="customsave">Save</button></div>';
+}
 function methodById(id){return METHODS.find(function(m){return m.id===id;})||null;}
 function methodLine(){
   var m=ui.method;if(!m)return '';
@@ -450,7 +458,7 @@ function sitesBlock(n){
 function loadLockApps(){
   try{var a=JSON.parse(window.Android.apps());a.sort(function(x,y){return (y.on-x.on)||x.n.toLowerCase().localeCompare(y.n.toLowerCase());});ui.lockApps=a;}catch(e){ui.lockApps=[];}
 }
-function styleObj(){return S.style?STYLES.find(function(x){return x.id===S.style;})||null:null;}
+function styleObj(){if(S.style==='custom')return {id:'custom',name:'My own',work:Math.min(180,Math.max(1,Number(S.custom&&S.custom.work)||25)),brk:Math.min(60,Math.max(0,Number(S.custom&&S.custom.brk)||0))};return S.style?STYLES.find(function(x){return x.id===S.style;})||null:null;}
 function defLen(){var st=styleObj();return st?st.work:(S.stage==='school'?15:25);}
 function taskLen(t){
   if(!t||!t.min)return defLen();
@@ -671,7 +679,8 @@ function ensureDuty(){
   if(isPaused())return false;
   var day=ymd(Date.now()),added=false;S.duty=S.duty||{};
   S.races.forEach(function(r){
-    if(r.demo||S.duty[r.id]===day)return;
+    if(r.demo)return;
+    if(S.duty[r.id]===day&&S.tasks.some(function(t){return t.rid===r.id&&t.duty===day;}))return;
     S.tasks=S.tasks.filter(function(t){return !(t.duty&&t.rid===r.id&&!t.done&&t.duty!==day);});
     var budget=Math.max(10,r.mins||30);
     for(var i=0;i<r.laps.length&&budget>=10;i++){
@@ -726,7 +735,7 @@ function taskCard(t){
   var meta=(t.min?'<span class="pill">'+t.min+' min</span>':'')+(t.part?'<span class="pill">'+esc(t.part)+'</span>':'')+(t.lap?'<span class="pill">'+esc(t.lap)+'</span>':'')+(ui.pd&&ui.pd[t.id]?'<span class="pill on">'+esc(ui.pd[t.id].label)+'</span>':'')+(t.when?'<span class="pill">'+esc(t.when)+'</span>':'')+(t.started?'<span class="pill on">Started</span>':'');
   return '<li class="card tcard"><button type="button" class="check" data-action="toggle" data-id="'+t.id+'" aria-label="Mark done: '+esc(t.title)+'"></button>'+
     '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="s">First step: '+esc(t.step)+'</div>'+(meta?'<div class="meta">'+meta+'</div>':'')+'</div>'+
-    '<div class="acts">'+(t.min>2?'<button type="button" class="btn small primary"'+(ui.tourTaskId===t.id?' data-tour="start"':'')+' data-action="startt" data-id="'+t.id+'">Start '+taskLen(t)+' min</button><button type="button" class="btn small" data-action="start2" data-id="'+t.id+'">Just 2 min</button>':'<button type="button" class="btn small primary"'+(ui.tourTaskId===t.id?' data-tour="start"':'')+' data-action="start2" data-id="'+t.id+'">Start 2 min</button>')+
+    '<div class="acts">'+(t.min>2?'<button type="button" class="btn small primary"'+(ui.tourTaskId===t.id?' data-tour="start"':'')+' data-action="startt" data-id="'+t.id+'">Start '+taskLen(t)+' min</button><button type="button" class="btn small" data-action="start2" data-id="'+t.id+'">Just 2 min</button><button type="button" class="btn small" data-action="tset" data-id="'+t.id+'">Set time</button>':'<button type="button" class="btn small primary"'+(ui.tourTaskId===t.id?' data-tour="start"':'')+' data-action="start2" data-id="'+t.id+'">Start 2 min</button>')+
     (t.duty?'':'<button type="button" class="btn small ghost" data-action="remove" data-id="'+t.id+'">Remove</button>')+'</div></li>';
 }
 function addForm(ph){
@@ -758,7 +767,7 @@ function vToday(){
     h+='<section class="card"><h2>One quick question</h2><p class="sub" style="margin:6px 0 12px">What are you working towards? Pick the closest one. It sets your default sprint length.</p><div class="chips">'+
       stageChips(false)+'</div></section>';
   }
-  if(S.stage&&!S.style)h+='<section class="card"><h2>How do you like to work?</h2><p class="sub" style="margin:6px 0 14px">Your timers and breaks will follow this. You can change it later in Report.</p><div class="chips">'+STYLES.map(function(x){return chip(esc(x.name)+' · '+x.work+'/'+x.brk,false,'style',x.id);}).join('')+'</div><p class="note" style="margin-top:12px">Work minutes / break minutes. Pomodoro is 25/5.</p></section>';
+  if(S.stage&&(!S.style||ui.styleEdit))h+='<section class="card"><h2>How do you like to work?</h2><p class="sub" style="margin:6px 0 14px">Your timers and breaks will follow this. You can change it later in Report.</p><div class="chips">'+styleChips(false)+'</div>'+customRow()+'<p class="note" style="margin-top:12px">Work minutes / break minutes. Pomodoro is 25/5.</p></section>';
   if(S.stage&&S.style&&((!S.profile&&!S.pfSkip)||ui.pfEdit))h+=profileCard();
   if(!hasActivePlan()&&(ui.addOpen||(!S.tasks.length)))h+=addForm(ph);
   h+='<div class="seg3" role="tablist" aria-label="Task filter">'+[['todo','To do',todo.length],['prog','In progress',prog.length],['done','Done',wins.length]].map(function(x){return '<button type="button" role="tab" class="fpill" aria-pressed="'+(f===x[0]?'true':'false')+'" data-action="tf" data-v="'+x[0]+'"><b>'+x[2]+'</b> '+x[1]+'</button>';}).join('')+'</div>';
@@ -788,6 +797,8 @@ function vFocus(){
       methodBlock(selT)+
       '<div class="lbl">Length</div><div class="chips">'+
       lenChips(len).map(function(m){return chip(m===2?'2 min · starter':m+' min',len===m,'setlen',m);}).join('')+'</div>'+
+      (selT&&selT.min>len?'<p class="note" style="margin-top:10px">This task is about '+selT.min+' min. Pick a sprint that suits you, or type your own below.</p>':'')+
+      '<div class="row" style="margin-top:10px"><input id="cLen" type="number" min="1" max="180" inputmode="numeric" placeholder="Custom minutes" aria-label="Custom minutes" style="max-width:150px"><button type="button" class="btn small" data-action="setcustomlen">Use this time</button></div>'+
       '<div style="margin-top:16px"><button type="button" class="btn primary big" data-action="startFocus">Start '+len+'-minute sprint</button></div></section>';
     return h+lockCard()+parkCard();
   }
@@ -962,7 +973,7 @@ function applyOps(r,ops){
 function vRaceDetail(r){
   var st=raceStats(r);
   var h='<div class="row" style="justify-content:space-between"><button type="button" class="btn ghost small" data-action="raceback">All races</button><button type="button" class="btn small primary" data-action="racenew">New race</button></div>'+
-    '<div class="head"><div class="eyebrow">'+(r.demo?'Example race':(r.ai?'Plan written by AI':'Built-in plan'))+'</div><h1 style="overflow-wrap:anywhere">'+esc(r.name)+'</h1><p class="sub">'+esc(leftText(r))+' · finish '+esc(fmtDate(r.due))+' · '+r.mins+' min a day</p></div>';
+    '<div class="head"><div class="eyebrow">'+(r.demo?'Example race':(r.ai?'Plan written by AI':'Built-in plan'))+(r.related?' · linked to '+esc(r.related):'')+'</div><h1 style="overflow-wrap:anywhere">'+esc(r.name)+'</h1><p class="sub">'+esc(leftText(r))+' · finish '+esc(fmtDate(r.due))+' · '+r.mins+' min a day</p></div>';
   if(r.note)h+='<p class="note">'+esc(r.note)+'</p>';
   if(r.realism)h+='<section class="card"><div class="tag">Is this realistic?</div><p style="margin-top:6px">'+esc(r.realism)+'</p></section>';
   h+=vRoute(r);
@@ -1048,7 +1059,7 @@ function vReport(){
     '<div class="metric"><div class="k">Felt focus<span class="n">Your own rating, last 7 days</span></div><div class="val">'+(o.feel==null?'–':o.feel.toFixed(1)+' / 5')+'</div></div></section>';
   h+='<details class="card fold"><summary>Settings and account</summary>'+accountRow()+planRow()+'<div class="lbl">What you are working towards</div><div class="chips">'+
     stageChips(true)+'</div>'+
-    '<div class="lbl">Your day</div><div class="row"><button type="button" class="btn small" data-action="pfedit">'+(S.profile?'Change my wake, sleep and busy times':'Set my wake, sleep and busy times')+'</button></div><div class="lbl">Look</div><div class="chips">'+chip('Fresh',skinNow()==='fresh','skin','fresh')+chip('Stoic',skinNow()==='stoic','skin','stoic')+chip('Classic',skinNow()==='classic','skin','classic')+'</div><div class="lbl">How you like to work</div><div class="chips">'+STYLES.map(function(x){return chip(esc(x.name)+' · '+x.work+'/'+x.brk,S.style===x.id,'style',x.id);}).join('')+'</div>'+(styleObj()&&styleObj().brk?'<div class="lbl">Longer break after every 4 sprints</div><div class="chips">'+[[0,'Off'],[15,'15 min'],[20,'20 min'],[30,'30 min']].map(function(x){return chip(x[1],(S.longBrk||0)===x[0],'longbrk',x[0]);}).join('')+'</div>':'')+remindRow()+'<div class="lbl">Break and help</div><div class="row">'+(isPaused()?'<button type="button" class="btn small primary" data-action="resumeplan">Resume my plans</button>':'<button type="button" class="btn small" data-action="pauseplan">Pause my plans</button>')+'<button type="button" class="btn small" data-action="tour">Replay the tour</button></div><p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
+    '<div class="lbl">Your day</div><div class="row"><button type="button" class="btn small" data-action="pfedit">'+(S.profile?'Change my wake, sleep and busy times':'Set my wake, sleep and busy times')+'</button></div><div class="lbl">Look</div><div class="chips">'+chip('Fresh',skinNow()==='fresh','skin','fresh')+chip('Stoic',skinNow()==='stoic','skin','stoic')+chip('Classic',skinNow()==='classic','skin','classic')+'</div><div class="lbl">How you like to work</div><div class="chips">'+styleChips(true)+'</div>'+customRow()+(styleObj()&&styleObj().brk?'<div class="lbl">Longer break after every 4 sprints</div><div class="chips">'+[[0,'Off'],[15,'15 min'],[20,'20 min'],[30,'30 min']].map(function(x){return chip(x[1],(S.longBrk||0)===x[0],'longbrk',x[0]);}).join('')+'</div>':'')+remindRow()+'<div class="lbl">Break and help</div><div class="row">'+(isPaused()?'<button type="button" class="btn small primary" data-action="resumeplan">Resume my plans</button>':'<button type="button" class="btn small" data-action="pauseplan">Pause my plans</button>')+'<button type="button" class="btn small" data-action="tour">Replay the tour</button></div><p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
     '<div style="margin-top:12px">'+(ui.confirmErase?'<div class="row"><span class="note">'+(ENT.signedIn?'Erase your progress here and in your account?':'Erase everything on this device?')+'</span><button type="button" class="btn small primary" data-action="eraseyes">Yes, erase</button><button type="button" class="btn small" data-action="eraseno">Keep it</button></div>':'<button type="button" class="btn small" data-action="erase">Erase all my data</button>')+'</div>'+deleteAcctRow()+'</details>';
   return h;
 }
@@ -1084,7 +1095,7 @@ function normalizeLaps(out,cap){
     var w=steps.reduce(function(a,x){return a+x.min;},0)||1;
     return {title:clip(l&&l.title,40)||'Next lap',focus:clip(l&&l.focus,170),rhythm:clip(l&&l.rhythm,170),milestone:clip(l&&l.milestone,60),weight:w,steps:steps};
   }).filter(function(l){return l.steps.length;});
-  return laps.length>=3?{name:clip(out.race_name,48),realism:clip(out.realism,500),laps:laps,best:PARTN[out.best]?out.best:'',kind2:['study','work','fitness','health','creative','life'].indexOf(out.kind)>=0?out.kind:''}:null;
+  return laps.length>=3?{name:clip(out.race_name,48),realism:clip(out.realism,500),laps:laps,best:PARTN[out.best]?out.best:'',related:clip(out.related,60),kind2:['study','work','fitness','health','creative','life'].indexOf(out.kind)>=0?out.kind:''}:null;
 }
 function aiOn(){return !!(ENT.cfg.ai&&ENT.cfg.ai.ready);}
 function planErr(f,e){
@@ -1112,6 +1123,9 @@ function failStay(f){f.loading=false;f.err='The planner is very busy right now a
 function planBody(f,extra){
   var b={goal:clip(f.goal,160),weeks:f.weeks,mins:f.mins,stage:S.stage||'',today:ymd(Date.now())};
   var st0=styleObj();if(st0){b.sprint=st0.work;b.brk=st0.brk;}
+  if(S.profile)b.profile=S.profile;
+  var oth=S.races.filter(function(x){return !x.demo&&x.laps.some(function(l){return l.steps.some(function(s){return !s.done;});});}).slice(0,5).map(function(x){return {name:x.name,goal:x.goal,due:x.due,mins:x.mins,kind:kindOf(x)};});
+  if(oth.length)b.others=oth;
   if(f.event&&f.useEvent&&evOk(f.event))b.event={name:f.event.name,date:f.event.date,source:f.event.source||'',note:f.event.note||''};
   if(extra)for(var k in extra)b[k]=extra[k];
   return b;
@@ -1174,8 +1188,8 @@ async function buildRace(){
   if(ui.raceForm!==f)return;
   if(!plan){planErr(f,{code:'ai_failed'});return;}
   var laps=plan.laps,name=plan.name||clip(goal,48);
-  var r=makeRace(goal,name,due,f.mins,laps,ai,false);r.note=note;if(plan&&plan.realism)r.realism=plan.realism;if(plan&&plan.kind2)r.kind=plan.kind2;if(plan&&plan.best)r.best=plan.best;if(useEv)r.event={name:clip(f.event.name,60),date:f.event.date,source:clip(f.event.source,60),note:clip(f.event.note,100)};
-  clearDemo();S.races.unshift(r);S.rdraft=null;ensureDuty();save();
+  var r=makeRace(goal,name,due,f.mins,laps,ai,false);r.note=note;if(plan&&plan.realism)r.realism=plan.realism;if(plan&&plan.kind2)r.kind=plan.kind2;if(plan&&plan.best)r.best=plan.best;if(plan&&plan.related)r.related=plan.related;if(useEv)r.event={name:clip(f.event.name,60),date:f.event.date,source:clip(f.event.source,60),note:clip(f.event.note,100)};
+  clearDemo();S.races.unshift(r);S.rdraft=null;ensureDuty();ui.tf='todo';save();
   if(ai&&!ENT.pro)ENT.aiFree=false;
   ui.raceForm=null;ui.raceOpen=r.id;ui.reset=true;render();pingDone('Your plan is ready.');
   toast('Your plan is ready. Today\u2019s work is already on your list.');
@@ -1185,7 +1199,7 @@ async function buildRace(){
 function act(a,d){
   var T=S.timer;
   switch(a){
-    case 'tab':ui.fx=true;ui.crewOpen=false;ui.tab=d.v;ui.reset=true;ui.confirmErase=false;ui.confirmDel=false;render();if(d.v==='race')buddyPing(false,true);break;
+    case 'tab':if(d.v==='today')ensureDuty();ui.fx=true;ui.crewOpen=false;ui.tab=d.v;ui.reset=true;ui.confirmErase=false;ui.confirmDel=false;render();if(d.v==='race')buddyPing(false,true);break;
     case 'stage':S.stage=d.v;save();render();break;
     case 'pfpeak':readPf();ui.pf.peak=d.v;render();break;
     case 'pfsave':{readPf();var p=ui.pf,b0=p.busy[0];S.profile={wake:p.wake||'07:00',sleep:p.sleep||'23:00',peak:p.peak||'',busy:(b0&&b0.from&&b0.to)?[{from:b0.from,to:b0.to,label:b0.label||''}]:[]};ui.pf=null;ui.pfEdit=false;save();render();toast('Saved. Today is now sorted for your day.');break;}
@@ -1203,7 +1217,7 @@ function act(a,d){
     case 'addtoggle':ui.addOpen=!ui.addOpen;ui.tab='today';ui.reset=true;render();if(ui.addOpen){var ti=$('#tTitle');if(ti)ti.focus();}break;
     case 'tf':ui.tf=d.v;render();break;
     case 'dmin':ui.draft.min=Number(d.v);render();break;
-    case 'style':S.style=d.v;if(d.v==='pomo'&&S.longBrk===undefined)S.longBrk=15;ui.len=null;save();render();toast('Timers now follow your style.');break;
+    case 'style':S.style=d.v;if(d.v==='custom'&&!S.custom)S.custom={work:25,brk:5};ui.styleEdit=d.v==='custom';if(d.v==='pomo'&&S.longBrk===undefined)S.longBrk=15;ui.len=null;save();render();toast('Timers now follow your style.');break;
     case 'brk':if(d.id==='long')S.cycle={n:0,at:Date.now()};startBreak(Number(d.v));break;
     case 'longbrk':S.longBrk=Number(d.v);save();render();break;
     case 'remove':S.tasks=S.tasks.filter(function(x){return x.id!==d.id;});if(S.timer&&S.timer.taskId===d.id)S.timer.taskId=null;S.races.forEach(function(r){r.laps.forEach(function(l){l.steps.forEach(function(s){if(s.taskId===d.id)s.taskId=null;});});});save();render();break;
@@ -1224,6 +1238,9 @@ function act(a,d){
     case 'mai':suggestMethod();break;
     case 'muse':if(ui.mAI&&ui.mAI.m){ui.method=ui.mAI.m;if(ui.method.len)ui.len=Math.min(90,Math.max(5,ui.method.len));render();}break;
     case 'setlen':ui.len=Number(d.v);render();break;
+    case 'setcustomlen':{var cv=Math.round(Number(($('#cLen')||{}).value));if(!(cv>=1&&cv<=180)){toast('Type a number from 1 to 180.');break;}ui.len=cv;render();break;}
+    case 'customsave':{var w=Math.round(Number(($('#cWork')||{}).value)),bk=Math.round(Number(($('#cBrk')||{}).value));if(!(w>=1&&w<=180)||!(bk>=0&&bk<=60)){toast('Work 1 to 180 minutes, break 0 to 60.');break;}S.custom={work:w,brk:bk};ui.len=null;ui.styleEdit=false;save();render();toast('Your timer is saved.');break;}
+    case 'tset':ui.focusTask=d.id;ui.len=null;ui.tab='focus';ui.reset=true;render();break;
     case 'startFocus':startSprint(ui.focusTask||null,ui.len||defLen());break;
     case 'pause':if(strictRunning())break;if(T&&!T.paused){T.remainMs=Math.max(0,T.endAt-Date.now());T.paused=true;save();render();}break;
     case 'resume':if(T&&T.paused){T.endAt=Date.now()+T.remainMs;T.paused=false;save();render();}break;
