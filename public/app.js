@@ -679,6 +679,7 @@ function ensureDuty(){
   if(isPaused())return false;
   var day=ymd(Date.now()),added=false;S.duty=S.duty||{};
   S.races.forEach(function(r){
+    try{
     if(r.demo)return;
     if(S.duty[r.id]===day&&S.tasks.some(function(t){return t.rid===r.id&&t.duty===day;}))return;
     S.tasks=S.tasks.filter(function(t){return !(t.duty&&t.rid===r.id&&!t.done&&t.duty!==day);});
@@ -694,6 +695,7 @@ function ensureDuty(){
       }
     }
     S.duty[r.id]=day;
+    }catch(e){try{console.error('duty',e);}catch(x){}}
   });
   if(added)save();
   return added;
@@ -734,10 +736,12 @@ function weekStrip(){
 function planToday(){
   var day=ymd(Date.now()),g={};
   S.tasks.forEach(function(t){if(t.duty&&t.rid&&t.duty===day){var x=g[t.rid]=g[t.rid]||{n:0,d:0,m:0,dm:0};x.n++;x.m+=t.min||0;if(t.done){x.d++;x.dm+=t.min||0;}}});
-  var rows=S.races.filter(function(r){return !r.demo&&g[r.id];});
+  var rows=S.races.filter(function(r){return !r.demo&&(g[r.id]||r.laps.some(function(l){return l.steps.some(function(s){return !s.done;});}));});
   if(!rows.length)return '';
   return '<section class="card"><h2>Today by plan</h2><ul class="list" style="margin-top:8px">'+rows.map(function(r){
-    var x=g[r.id],pct=x.n?Math.round(x.d/x.n*100):0;
+    var x=g[r.id];
+    if(!x)return '<li class="item" style="display:block"><div class="row" style="justify-content:space-between"><div class="t" style="overflow-wrap:anywhere">'+esc(r.name)+'</div><button type="button" class="btn small primary" data-action="dutyfix" data-id="'+r.id+'">Add today\u2019s work</button></div></li>';
+    var pct=x.n?Math.round(x.d/x.n*100):0;
     return '<li class="item" style="display:block"><div class="row" style="justify-content:space-between"><div class="t" style="overflow-wrap:anywhere">'+esc(r.name)+'</div><span class="tag mono">'+x.d+'/'+x.n+' · '+x.m+' min</span></div><div class="bar" style="margin-top:6px"><i style="width:'+pct+'%"></i></div></li>';
   }).join('')+'</ul></section>';
 }
@@ -759,6 +763,7 @@ function addForm(ph){
     '<div style="margin-top:18px"><button class="btn primary big" type="submit">Create task</button></div></form>';
 }
 function vToday(){
+  ensureDuty();
   var now=Date.now(),sod=startOfDay(now),open=openTasks().filter(function(t){return !(t.demo&&t.created<sod-DAY);}).sort(function(a,b){return (!!a.demo-!!b.demo)||(b.created-a.created);});
   var wins=S.tasks.filter(function(t){return t.done&&t.done>=sod;}).sort(function(a,b){return b.done-a.done;});
   var sess=S.sessions.filter(function(s){return s.start>=sod;});
@@ -1250,6 +1255,7 @@ function act(a,d){
     case 'setlen':ui.len=Number(d.v);render();break;
     case 'setcustomlen':{var cv=Math.round(Number(($('#cLen')||{}).value));if(!(cv>=1&&cv<=180)){toast('Type a number from 1 to 180.');break;}ui.len=cv;render();break;}
     case 'customsave':{var w=Math.round(Number(($('#cWork')||{}).value)),bk=Math.round(Number(($('#cBrk')||{}).value));if(!(w>=1&&w<=180)||!(bk>=0&&bk<=60)){toast('Work 1 to 180 minutes, break 0 to 60.');break;}S.custom={work:w,brk:bk};ui.len=null;ui.styleEdit=false;save();render();toast('Your timer is saved.');break;}
+    case 'dutyfix':S.duty[d.id]=null;ensureDuty();ui.tf='todo';save();render();break;
     case 'tset':ui.focusTask=d.id;ui.len=null;ui.tab='focus';ui.reset=true;render();break;
     case 'startFocus':startSprint(ui.focusTask||null,ui.len||defLen());break;
     case 'pause':if(strictRunning())break;if(T&&!T.paused){T.remainMs=Math.max(0,T.endAt-Date.now());T.paused=true;save();render();}break;
