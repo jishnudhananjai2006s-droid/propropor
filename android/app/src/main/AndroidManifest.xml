@@ -45,6 +45,8 @@
             android:taskAffinity=""
             android:theme="@style/Theme.Startline" />
 
+        <receiver android:name=".Reminder$Receiver" android:exported="false" />
+
         <service
             android:name=".BlockService"
             android:exported="false"

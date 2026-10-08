@@ -38,7 +38,7 @@ function maximCard(){
   return '<blockquote class="maxim">'+esc(m[0])+'<small>'+esc(m[1])+' (adapted)</small></blockquote>';
 }
 /* ---------- state (stays on this device) ---------- */
-function fresh(){return {v:1,stage:null,tasks:[],sessions:[],parked:[],races:[],timer:null,demo:false,pause:null,pauses:[],duty:{},profile:null,seen:{},remind:null,style:null};}
+function fresh(){return {v:1,stage:null,tasks:[],sessions:[],parked:[],races:[],timer:null,demo:false,pause:null,pauses:[],duty:{},profile:null,off:{},reviews:[],seen:{},remind:null,style:null};}
 function load(){try{var r=localStorage.getItem(KEY);if(r){var o=JSON.parse(r);if(o&&o.v===1&&Array.isArray(o.tasks))return o;}}catch(e){}return null;}
 function save(nosync){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}if(!nosync)scheduleSync();}
 var S=load();
@@ -121,14 +121,14 @@ function getMeta(){try{return JSON.parse(localStorage.getItem(SYNCKEY)||'null')|
 function setMeta(m){try{localStorage.setItem(SYNCKEY,JSON.stringify(m));}catch(e){}}
 function exportState(){
   var nd=function(x){return !x.demo;};
-  return {v:1,stage:S.stage,tasks:S.tasks.filter(nd),sessions:S.sessions.filter(nd),parked:S.parked,races:S.races.filter(nd),pause:S.pause||null,pauses:S.pauses||[],duty:S.duty||{},profile:S.profile||null};
+  return {v:1,stage:S.stage,tasks:S.tasks.filter(nd),sessions:S.sessions.filter(nd),parked:S.parked,races:S.races.filter(nd),pause:S.pause||null,pauses:S.pauses||[],duty:S.duty||{},profile:S.profile||null,off:S.off||{},reviews:S.reviews||[]};
 }
 function hasReal(st){return st.tasks.length>0||st.sessions.length>0||st.races.length>0||st.parked.length>0;}
 function adopt(st){
   S.stage=st.stage||S.stage;
   S.tasks=Array.isArray(st.tasks)?st.tasks:[];S.sessions=Array.isArray(st.sessions)?st.sessions:[];
   S.parked=Array.isArray(st.parked)?st.parked:[];S.races=Array.isArray(st.races)?st.races:[];
-  S.pause=st.pause&&st.pause.since?{since:Number(st.pause.since)}:null;S.pauses=Array.isArray(st.pauses)?st.pauses:[];S.duty=st.duty&&typeof st.duty==='object'?st.duty:{};S.profile=st.profile&&st.profile.wake?st.profile:(S.profile||null);S.demo=false;S.timer=null;ui.focusTask='';ui.raceOpen=null;ensureDuty();save(true);
+  S.pause=st.pause&&st.pause.since?{since:Number(st.pause.since)}:null;S.pauses=Array.isArray(st.pauses)?st.pauses:[];S.duty=st.duty&&typeof st.duty==='object'?st.duty:{};S.profile=st.profile&&st.profile.wake?st.profile:(S.profile||null);S.off=st.off&&typeof st.off==='object'?st.off:{};S.reviews=Array.isArray(st.reviews)?st.reviews:[];S.demo=false;S.timer=null;ui.focusTask='';ui.raceOpen=null;ensureDuty();save(true);
 }
 function wipeLocal(){
   clearTimeout(syncT);
@@ -250,14 +250,16 @@ async function deleteAccount(){
   wipeLocal();ui.login=true;render();toast('Account deleted.');
 }
 var AGEKEY='startline.adult',ageMem='';
+function ageOK(){var a=ageState();return a==='1'||a==='2';}
 function ageState(){if(ageMem)return ageMem;try{return localStorage.getItem(AGEKEY)||'';}catch(e){return '';}}
 function setAge(v){ageMem=v;try{localStorage.setItem(AGEKEY,v);}catch(e){}}
 function vAge(){
-  if(ageState()==='0')return '<div class="sheet-back"><div class="sheet" role="dialog" aria-modal="true" aria-label="Age check"><span class="badge">Startline</span><h2 style="font-size:24px">Startline is for people 18 and over</h2><p class="sub">Please come back when you turn 18. Nothing was saved.</p></div></div>';
+  if(ageState()==='p')return '<div class="sheet-back"><div class="sheet" role="dialog" aria-modal="true" aria-label="Parent or guardian"><span class="badge">Startline</span><h2 style="font-size:24px">A parent or guardian needs to be OK with this</h2><p class="sub">You are under 18. Startline stores your goals and progress, and your goal text goes to an AI to write your plan. Please show this to a parent or guardian. Paid plans must be set up by them.</p><label class="row" style="gap:10px;align-items:flex-start"><input id="parentOk" type="checkbox" style="width:22px;height:22px;flex:none"><span>A parent or guardian has agreed that I can use Startline.</span></label><p class="err" role="alert">'+esc(ui.ageErr)+'</p><button type="button" class="btn primary big" data-action="parentok">Continue</button></div></div>';
+  if(ageState()==='0')return '<div class="sheet-back"><div class="sheet" role="dialog" aria-modal="true" aria-label="Age check"><span class="badge">Startline</span><h2 style="font-size:24px">Startline is for people 13 and over</h2><p class="sub">Please come back when you turn 13. Nothing was saved.</p></div></div>';
   var ny=new Date().getFullYear(),mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],o1='<option value="">Month</option>',o2='<option value="">Year</option>',i;
   for(i=0;i<12;i++)o1+='<option value="'+(i+1)+'">'+mo[i]+'</option>';
-  for(i=ny-14;i>=ny-60;i--)o2+='<option value="'+i+'">'+i+'</option>';
-  return '<div class="sheet-back"><div class="sheet" role="dialog" aria-modal="true" aria-label="Age check"><span class="badge">Startline</span><h2 style="font-size:24px">Before you start</h2><p class="sub">Startline is for people 18 and over. Tell us your birth month and year.</p>'+
+  for(i=ny-13;i>=ny-60;i--)o2+='<option value="'+i+'">'+i+'</option>';
+  return '<div class="sheet-back"><div class="sheet" role="dialog" aria-modal="true" aria-label="Age check"><span class="badge">Startline</span><h2 style="font-size:24px">Before you start</h2><p class="sub">Startline is for people 13 and over. Under 18 needs a parent or guardian to agree. Tell us your birth month and year.</p>'+
     '<div class="row"><select id="ageM" aria-label="Birth month">'+o1+'</select><select id="ageY" aria-label="Birth year">'+o2+'</select></div>'+
     '<button type="button" class="btn primary big" data-action="ageok">Continue</button><p class="err" role="alert">'+esc(ui.ageErr)+'</p>'+
     '<p class="note">We do not save your birth date. Only a yes or no stays on this device.</p></div></div>';
@@ -266,7 +268,9 @@ function checkAge(){
   var m=parseInt(($('#ageM')||{}).value,10),y=parseInt(($('#ageY')||{}).value,10);
   if(!m||!y){ui.ageErr='Please choose your birth month and year.';render();return;}
   var n=new Date(),age=n.getFullYear()-y-((n.getMonth()+1)<m?1:0);
-  ui.ageErr='';setAge(age>=18?'1':'0');render();
+  ui.ageErr='';
+  if(age>=18){setAge('1');}else if(age>=13){setAge('p');}else setAge('0');
+  render();
 }
 function vLogin(){
   var a=ENT.cfg.auth||{},gate=!ENT.signedIn,why=gate?'Sign in to start':ui.afterLogin==='checkout'?'Sign in first so Pro follows you to every device.':(ui.afterLogin==='paid'?'Sign in to finish turning on Pro.':'Back up your progress and keep Pro on every device.');
@@ -311,11 +315,11 @@ function freeRaceWait(){
 }
 function freeRaceDate(){return new Date(Date.now()+freeRaceWait()).toLocaleDateString(undefined,{day:'numeric',month:'short'});}
 function vPaywall(){
-  var c=ENT.cfg,why={races:'Free plan: one race every '+(Number(c.freeCooldownDays)||3)+' days.',ai:'Get a plan tailored to your goal.',edit:'Change your plan any time by chatting with the assistant.',report:'See how much sooner you start.',general:'Go further with Pro.'}[ui.paywall]||'Go further with Pro.';
+  var c=ENT.cfg,why={races:'Free plan: one goal every '+(Number(c.freeCooldownDays)||3)+' days.',ai:'Get a plan tailored to your goal.',edit:'Change your plan any time by chatting with the assistant.',report:'See how much sooner you start.',general:'Go further with Pro.'}[ui.paywall]||'Go further with Pro.';
   return '<div class="sheet-back" data-action="paywallbg"><div class="sheet" role="dialog" aria-modal="true" aria-label="Startline Pro">'+
     '<div class="row"><span class="badge">Startline Pro</span>'+(c.testMode?'<span class="badge">Test mode</span>':'')+'</div>'+
-    '<h2 style="font-size:24px">'+esc(why)+'</h2>'+(ui.paywall==='races'&&freeRaceWait()>0?'<p class="sub">Your next free race opens on '+esc(freeRaceDate())+'. Pro has no waiting.</p>':'')+
-    '<ul class="perks"><li>Start a new race any time, each planned by AI around your answers</li><li>Chat to edit any plan: reword, add, remove or re-time steps</li><li>Week-by-week proof that you start sooner</li><li>Cancel any time</li></ul>'+
+    '<h2 style="font-size:24px">'+esc(why)+'</h2>'+(ui.paywall==='races'&&freeRaceWait()>0?'<p class="sub">Your next free goal opens on '+esc(freeRaceDate())+'. Pro has no waiting.</p>':'')+
+    '<ul class="perks"><li>Start a new goal any time, each planned by AI around your answers</li><li>Chat to edit any plan: reword, add, remove or re-time steps</li><li>Week-by-week proof that you start sooner</li><li>Cancel any time</li></ul>'+
     '<div><span class="price">'+esc(c.priceLabel)+'</span>'+(c.trialDays?'<div class="note">'+c.trialDays+'-day free trial first.</div>':'')+'</div>'+
     (!ENT.signedIn?'<p class="note">You sign in first, so Pro follows you to every device.</p>':'')+'<button type="button" class="btn primary big" data-action="subscribe"'+(ui.busy?' disabled':'')+'>'+(ui.busy?'One moment...':(!ENT.signedIn?'Sign in to continue':(c.trialDays?'Start '+c.trialDays+'-day free trial':'Go Pro')))+'</button>'+
     (c.testMode?'<p class="note">Test mode: payments are simulated. Nobody is charged.</p>':'')+
@@ -401,6 +405,17 @@ function fmtM(m){return m>=60?Math.floor(m/60)+' h '+(m%60)+' min':m+' min';}
 function lockUse(){
   var now=Date.now();if(ui.lockUseAt&&now-ui.lockUseAt<30000)return ui.lockUse;
   try{ui.lockUse=JSON.parse(window.Android.usage());}catch(e){ui.lockUse=null;}ui.lockUseAt=now;return ui.lockUse;
+}
+function remOn(){return !!(window.Android&&window.Android.remind)&&S.remApp!==false;}
+function syncReminders(){
+  if(!remOn()||!ENT.signedIn)return;
+  var list=[],now=Date.now(),sod=startOfDay(now),todo=openTasks().filter(function(t){return !t.started&&!t.demo;}),pd=S.profile?planDay(todo):null;
+  if(pd)todo.forEach(function(t){var x=pd[t.id];if(!x)return;var at=sod+x.s*60000;if(at>now+60000)list.push({at:at,t:'Time for: '+clip(t.title,50),x:(t.min||25)+' min. Start with 2 minutes if it feels heavy.'});});
+  list.sort(function(a,b){return a.at-b.at;});list=list.slice(0,10);
+  var wk=S.profile?hm(S.profile.wake):420;
+  list.push({at:addDays(sod,1)+(wk+45)*60000,t:'Your day is ready',x:'Today\u2019s work is waiting. Start with 2 minutes.'});
+  var j=JSON.stringify(list);if(j===ui.remLast)return;ui.remLast=j;
+  try{window.Android.remind(j);}catch(e){}
 }
 function syncBlock(){
   if(!window.Android||!window.Android.start)return;
@@ -555,7 +570,7 @@ function makeRace(goal,name,due,mins,laps,ai,demo){
   return r;
 }
 if(!S){S=fresh();seedDemo();save();}
-S.pauses=Array.isArray(S.pauses)?S.pauses:[];S.seen=S.seen||{};S.duty=S.duty&&typeof S.duty==='object'?S.duty:{};if(S.pause===undefined)S.pause=null;
+S.pauses=Array.isArray(S.pauses)?S.pauses:[];S.seen=S.seen||{};S.duty=S.duty&&typeof S.duty==='object'?S.duty:{};S.off=S.off&&typeof S.off==='object'?S.off:{};S.reviews=Array.isArray(S.reviews)?S.reviews:[];if(S.pause===undefined)S.pause=null;
 
 /* ---------- timer ---------- */
 function startSprint(taskId,len){
@@ -590,14 +605,22 @@ document.addEventListener('visibilitychange',tick);
 window.addEventListener('focus',function(){if(window.Android&&window.Android.status&&ui.tab==='focus')render();});
 
 /* ---------- task actions ---------- */
+function onStepDone(r,s){
+  if(S.spaced===false||['study','work','creative'].indexOf(kindOf(r))<0)return;
+  if(S.reviews.some(function(v){return v.sid===s.id;}))return;
+  var sod=startOfDay(Date.now());
+  [1,3,7].forEach(function(g){S.reviews.push({id:uid(),rid:r.id,sid:s.id,text:clip(s.text,90),due:ymd(addDays(sod,g))});});
+  S.reviews=S.reviews.slice(-300);
+}
 function completeTask(id){
   var t=taskById(id);if(!t||t.done)return;
   t.done=Date.now();buddyPing(true);
   if(t.duty&&t.sid){
     S.races.forEach(function(r){r.laps.forEach(function(l){l.steps.forEach(function(s){
-      if(s.id===t.sid&&!s.done){s.spent=(s.spent||0)+(t.min||0);if(s.spent>=s.min-4){s.spent=s.min;s.done=t.done;}}
+      if(s.id===t.sid&&!s.done){s.spent=(s.spent||0)+(t.min||0);if(s.spent>=s.min-4){s.spent=s.min;s.done=t.done;onStepDone(r,s);}}
     });});});
-  }else S.races.forEach(function(r){r.laps.forEach(function(l){l.steps.forEach(function(s){if(s.taskId===id&&!s.done)s.done=t.done;});});});
+  }else S.races.forEach(function(r){r.laps.forEach(function(l){l.steps.forEach(function(s){if(s.taskId===id&&!s.done){s.done=t.done;onStepDone(r,s);}});});});
+  if(t.rev)S.reviews=S.reviews.filter(function(v){return v.id!==t.rev;});
   save();
 }
 /* Daily duty: each day the plan puts that day's work on Today by itself, sized to the daily time the user chose. */
@@ -640,7 +663,8 @@ function planDay(tasks){
   var wake=hm(pf.wake),sl=hm(pf.sleep);if(sl<=wake)sl+=1440;
   var d=new Date(),now=d.getHours()*60+d.getMinutes(),lo=Math.max(wake+30,Math.ceil((now+5)/5)*5),hi=sl-30;
   var free=hi>lo?[[lo,hi]]:[];
-  (pf.busy||[]).forEach(function(b){var a=hm(b.from),e=hm(b.to);if(e<=a)e+=1440;free=subtract(free,a,e);if(a<1440)free=subtract(free,a+1440,e+1440);});
+  var wd=d.getDay();
+  (pf.busy||[]).forEach(function(b){if(b.days&&b.days.indexOf(wd)<0)return;var a=hm(b.from),e=hm(b.to);if(e<=a)e+=1440;free=subtract(free,a,e);if(a<1440)free=subtract(free,a+1440,e+1440);});
   var rng={morning:[wake+30,720],midday:[660,840],afternoon:[780,1020],evening:[1020,1260],night:[1260,hi]};
   var due={};S.races.forEach(function(r){due[r.id]=r.due||'9999';});
   var order=tasks.filter(function(t){return !t.started;}).sort(function(a,b){
@@ -661,42 +685,56 @@ function planDay(tasks){
   return out;
 }
 function profileCard(){
-  var p=ui.pf=ui.pf||(S.profile?JSON.parse(JSON.stringify(S.profile)):{wake:'07:00',sleep:'23:00',peak:'',busy:[{from:'',to:'',label:''}]});
-  if(!p.busy||!p.busy.length)p.busy=[{from:'',to:'',label:''}];
-  var b=p.busy[0];
-  return '<section class="card"><h2>Your day, roughly</h2><p class="sub" style="margin:6px 0 12px">A few questions so Startline can put each task at the best time of day, whatever your goals are. Rough times are fine. Your answers stay on your device and only travel with your own backup.</p>'+
+  var first=!S.profile,p=ui.pf=ui.pf||(S.profile?JSON.parse(JSON.stringify(S.profile)):{wake:'07:00',sleep:'23:00',peak:'',busy:[]});
+  p.busy=p.busy||[];
+  var N=['S','M','T','W','T','F','S'];
+  var rows=p.busy.map(function(b,i){
+    var dys=b.days||[0,1,2,3,4,5,6];
+    return '<div class="card" style="padding:10px;margin-top:8px"><div class="row" style="flex-wrap:wrap;gap:8px"><input id="pfFrom'+i+'" type="time" value="'+esc(b.from)+'" aria-label="Busy from" style="max-width:120px"><span class="note">to</span><input id="pfTo'+i+'" type="time" value="'+esc(b.to)+'" aria-label="Busy until" style="max-width:120px"><input id="pfLabel'+i+'" type="text" maxlength="30" placeholder="e.g. College" value="'+esc(b.label||'')+'" aria-label="What is it" style="flex:1;min-width:100px"></div>'+
+      '<div class="chips" style="margin-top:8px">'+N.map(function(n,d){return chip(n,dys.indexOf(d)>=0,'pfday',i+':'+d);}).join('')+'<button type="button" class="btn ghost small" data-action="pfrm" data-v="'+i+'">Remove</button></div></div>';
+  }).join('');
+  return '<section class="card"><h2>'+(first?'Two quick things':'Your day, roughly')+'</h2><p class="sub" style="margin:6px 0 12px">'+(first?'When do you wake and sleep? Startline puts each task at a good time of day, for any kind of goal. Rough is fine.':'Rough times are fine. Different days can have different busy times.')+'</p>'+
     '<div class="row" style="flex-wrap:wrap;gap:12px"><div><label class="lbl" for="pfWake" style="margin-top:0">I wake up around</label><input id="pfWake" type="time" value="'+esc(p.wake)+'" style="max-width:150px"></div><div><label class="lbl" for="pfSleep" style="margin-top:0">I go to sleep around</label><input id="pfSleep" type="time" value="'+esc(p.sleep)+'" style="max-width:150px"></div></div>'+
-    '<div class="lbl">Busy part of my day (classes, work, travel). Optional</div><div class="row" style="flex-wrap:wrap;gap:8px"><input id="pfFrom" type="time" value="'+esc(b.from)+'" aria-label="Busy from" style="max-width:130px"><span class="note">to</span><input id="pfTo" type="time" value="'+esc(b.to)+'" aria-label="Busy until" style="max-width:130px"><input id="pfLabel" type="text" maxlength="30" placeholder="e.g. College" value="'+esc(b.label)+'" aria-label="What is it" style="flex:1;min-width:110px"></div>'+
-    '<div class="lbl">When is your head clearest?</div><div class="chips">'+[['morning','Morning'],['afternoon','Afternoon'],['evening','Evening'],['night','Late night'],['','Not sure']].map(function(x){return chip(x[1],p.peak===x[0],'pfpeak',x[0]);}).join('')+'</div>'+
-    '<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn primary" data-action="pfsave">Save my day</button>'+(S.profile?'<button type="button" class="btn ghost" data-action="pfclose">Cancel</button>':'<button type="button" class="btn ghost" data-action="pfskip">Skip for now</button>')+'</div></section>';
+    (first?'<div class="lbl">What are you mostly working on? Optional</div><div class="chips">'+stageChips(true)+'</div>':'')+
+    '<details class="fold" style="margin-top:12px"'+(p.busy.length||!first?' open':'')+'><summary>Classes, work or other busy times</summary><p class="note" style="margin:8px 0 0">Add each block, and tick the days it happens. Weekdays and weekends can differ.</p>'+rows+'<div style="margin-top:8px"><button type="button" class="btn small" data-action="pfadd">Add a busy time</button></div>'+
+    '<div class="lbl">When is your head clearest?</div><div class="chips">'+[['morning','Morning'],['afternoon','Afternoon'],['evening','Evening'],['night','Late night'],['','Not sure']].map(function(x){return chip(x[1],p.peak===x[0],'pfpeak',x[0]);}).join('')+'</div></details>'+
+    '<div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn primary" data-action="pfsave">Save</button>'+(S.profile?'<button type="button" class="btn ghost" data-action="pfclose">Cancel</button>':'<button type="button" class="btn ghost" data-action="pfskip">Skip for now</button>')+'</div></section>';
 }
 function readPf(){
   var p=ui.pf;if(!p)return;
   var g=function(id){var e=$('#'+id);return e?e.value:null;};
-  if(g('pfWake')!==null){p.wake=g('pfWake')||p.wake;p.sleep=g('pfSleep')||p.sleep;p.busy=[{from:g('pfFrom')||'',to:g('pfTo')||'',label:clip(g('pfLabel')||'',30)}];}
+  if(g('pfWake')!==null){p.wake=g('pfWake')||p.wake;p.sleep=g('pfSleep')||p.sleep;}
+  (p.busy||[]).forEach(function(b,i){if(g('pfFrom'+i)!==null){b.from=g('pfFrom'+i)||'';b.to=g('pfTo'+i)||'';b.label=clip(g('pfLabel'+i)||'',30);}});
 }
 function ensureDuty(){
   if(isPaused())return false;
-  var day=ymd(Date.now()),added=false;S.duty=S.duty||{};
+  var day=ymd(Date.now()),added=false,dow=new Date().getDay();S.duty=S.duty||{};S.off=S.off||{};var mode=S.off[day]||'';
   S.races.forEach(function(r){
     try{
     if(r.demo)return;
+    if(mode==='off'||(r.rest&&r.rest.indexOf(dow)>=0)){S.duty[r.id]=day;return;}
     if(S.duty[r.id]===day&&S.tasks.some(function(t){return t.rid===r.id&&t.duty===day;}))return;
     S.tasks=S.tasks.filter(function(t){return !(t.duty&&t.rid===r.id&&!t.done&&t.duty!==day);});
-    var budget=Math.max(10,r.mins||30);
+    var budget=Math.max(10,mode==='busy'?Math.round((r.mins||30)/2):(r.mins||30)),dm=Math.max(10,r.mins||30);
     for(var i=0;i<r.laps.length&&budget>=10;i++){
       var l=r.laps[i];
       for(var j=0;j<l.steps.length&&budget>=10;j++){
         var st=l.steps[j];if(st.done)continue;
         var left=Math.max(5,st.min-(st.spent||0)),chunk=Math.min(left,budget);
         if(left>chunk&&left-chunk<10)chunk=left;
-        var t={id:uid(),title:st.text,step:suggestStep(st.text),min:chunk,created:Date.now(),started:null,done:null,duty:day,rid:r.id,sid:st.id,part:chunk<left?('Part of a '+Math.round(st.min/5)*5+' min step'):'',lap:l.title};
+        var t={id:uid(),title:st.text,step:suggestStep(st.text),min:chunk,created:Date.now(),started:null,done:null,duty:day,rid:r.id,sid:st.id,part:(chunk<left||(st.spent||0)>0)?('Part '+(Math.floor((st.spent||0)/dm)+1)+' of '+Math.max(1,Math.ceil(st.min/dm))):'',lap:l.title};
         S.tasks.push(t);st.taskId=t.id;budget-=chunk;added=true;
       }
     }
     S.duty[r.id]=day;
     }catch(e){try{console.error('duty',e);}catch(x){}}
   });
+  S.reviews=S.reviews.filter(function(v){return v&&v.rid&&S.races.some(function(r){return r.id===v.rid;});});
+  if(mode!=='off'){var nrev=0;S.reviews.forEach(function(v){
+    if(nrev>=3||v.due>day||(v.tid&&taskById(v.tid)))return;
+    var rt={id:uid(),title:'Review: '+v.text,step:'Close the notes. Say or write what you remember, then check.',min:10,created:Date.now(),started:null,done:null,duty:day,rid:v.rid,rev:v.id,part:'Spaced review',lap:''};
+    S.tasks.push(rt);v.tid=rt.id;nrev++;added=true;
+  });}
   if(added)save();
   return added;
 }
@@ -733,6 +771,45 @@ function weekStrip(){
     h+='<div class="d'+cls+'" role="listitem" aria-label="'+new Date(d).toLocaleDateString(undefined,{weekday:'long',day:'numeric'})+(done[d]?', active':'')+'"><span>'+L[i]+'</span><b>'+new Date(d).getDate()+'</b><i></i></div>';}
   return h+'</div>';
 }
+function resetToday(){
+  var day=ymd(Date.now());
+  S.tasks=S.tasks.filter(function(t){return !(t.duty===day&&!t.done&&!t.started);});
+  S.races.forEach(function(r){r.laps.forEach(function(l){l.steps.forEach(function(s){if(s.taskId&&!taskById(s.taskId))s.taskId=null;});});S.duty[r.id]=null;});
+  S.reviews.forEach(function(v){if(v.tid&&!taskById(v.tid))v.tid=null;});
+}
+function setDayMode(v){
+  var day=ymd(Date.now()),sod=startOfDay(Date.now());
+  S.pauses=(S.pauses||[]).filter(function(p){return !(p.day===day);});
+  if(v)S.off[day]=v;else delete S.off[day];
+  if(v==='off')S.pauses.push({from:sod,to:sod+DAY,day:day});
+  resetToday();ensureDuty();ui.tf='todo';save();render();
+  toast(v==='off'?'Rest well. Today is skipped and your streak is safe.':(v==='busy'?'Busy day: today\u2019s work is halved.':'Back to a normal day.'));
+}
+function dayModeBlock(){
+  var m=S.off[ymd(Date.now())]||'';
+  return '<details class="fold" style="margin-top:10px"'+(m?' open':'')+'><summary>Not a normal day?</summary><div class="chips" style="margin-top:8px">'+chip('Busy day: half the work',m==='busy','daymode','busy')+chip('Sick or off: skip today',m==='off','daymode','off')+(m?chip('Back to normal',false,'daymode','none'):'')+'</div><p class="note" style="margin-top:8px">Your streak stays safe and skipped work moves forward.</p></details>';
+}
+function behindInfo(r){
+  if(r.demo)return null;
+  var today=startOfDay(Date.now()),prev=startOfDay(r.created),exp=0,done=0,tot=0;
+  r.laps.forEach(function(l){
+    var lm=0;l.steps.forEach(function(s){lm+=s.min;done+=s.done?s.min:Math.min(s.min,s.spent||0);});
+    tot+=lm;var due=parseYmd(l.due);
+    if(due<=today)exp+=lm;else if(today>prev)exp+=lm*(today-prev)/Math.max(DAY,due-prev);
+    prev=Math.max(prev,due);
+  });
+  var per=Math.max(10,(r.mins||30)*0.8),days=Math.round((exp-done)/per);
+  return days>=2&&daysLeft(r)>0?{days:days}:null;
+}
+function behindButtons(r,b){
+  return '<div class="chips" style="margin-top:10px">'+(r.mins<180?'<button type="button" class="btn small primary" data-action="bhmore" data-id="'+r.id+'">+15 min a day</button>':'')+'<button type="button" class="btn small" data-action="bhdate" data-id="'+r.id+'" data-v="'+b.days+'">Move finish +'+b.days+' day'+(b.days===1?'':'s')+'</button><button type="button" class="btn small" data-action="bhspread" data-id="'+r.id+'">Re-plan the dates</button></div>';
+}
+function behindAlert(){
+  if(isPaused())return '';
+  var rows=S.races.map(function(r){return {r:r,b:behindInfo(r)};}).filter(function(x){return x.b;}).sort(function(a,b){return b.b.days-a.b.days;}).slice(0,2);
+  if(!rows.length)return '';
+  return rows.map(function(x){return '<section class="card"><div class="tag">Pace check</div><h2 style="margin-top:4px;overflow-wrap:anywhere">'+esc(x.r.name)+' is about '+x.b.days+' days behind</h2><p class="sub" style="margin:6px 0 0">It happens. Pick how to fix it. No guilt, no pile-up.</p>'+behindButtons(x.r,x.b)+'</section>';}).join('');
+}
 function nextAhead(r){
   for(var i=0;i<r.laps.length;i++)for(var j=0;j<r.laps[i].steps.length;j++){
     var st=r.laps[i].steps[j];if(st.done)continue;
@@ -762,10 +839,10 @@ function planToday(){
     }
     h+='<li class="item" style="display:block"><div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px"><div style="min-width:0">'+nm+body+'</div>'+btn+'</div>'+(x?'<div class="bar" style="margin-top:6px"><i style="width:'+pct+'%"></i></div><div class="note mono" style="margin-top:2px">'+x.d+'/'+x.n+' done today</div>':'')+'</li>';
   });
-  return h+'</ul></section>';
+  return h+'</ul>'+dayModeBlock()+'</section>';
 }
 function taskCard(t){
-  var meta=(t.min?'<span class="pill">'+t.min+' min</span>':'')+(t.part?'<span class="pill">'+esc(t.part)+'</span>':'')+(t.rid&&S.races.length>1?(function(){var rr=S.races.find(function(x){return x.id===t.rid;});return rr?'<span class="pill">'+esc(clip(rr.name,22))+'</span>':'';})():'')+(t.lap?'<span class="pill">'+esc(t.lap)+'</span>':'')+(ui.pd&&ui.pd[t.id]?'<span class="pill on">'+esc(ui.pd[t.id].label)+'</span>':'')+(t.when?'<span class="pill">'+esc(t.when)+'</span>':'')+(t.started?'<span class="pill on">Started</span>':'');
+  var meta=(t.min?'<span class="pill">'+t.min+' min</span>':'')+(function(){if(!t.duty||!t.sid)return '';var f=findStep(t.rid,t.sid);return f&&f.s.spent>0?'<span class="pill">'+Math.round(f.s.spent/f.s.min*100)+'% of this step done</span>':'';})()+(t.part?'<span class="pill">'+esc(t.part)+'</span>':'')+(t.rid&&S.races.length>1?(function(){var rr=S.races.find(function(x){return x.id===t.rid;});return rr?'<span class="pill">'+esc(clip(rr.name,22))+'</span>':'';})():'')+(t.lap?'<span class="pill">'+esc(t.lap)+'</span>':'')+(ui.pd&&ui.pd[t.id]?'<span class="pill on">'+esc(ui.pd[t.id].label)+'</span>':'')+(t.when?'<span class="pill">'+esc(t.when)+'</span>':'')+(t.started?'<span class="pill on">Started</span>':'');
   return '<li class="card tcard"><button type="button" class="check" data-action="toggle" data-id="'+t.id+'" aria-label="Mark done: '+esc(t.title)+'"></button>'+
     '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="s">First step: '+esc(t.step)+'</div>'+(meta?'<div class="meta">'+meta+'</div>':'')+'</div>'+
     '<div class="acts">'+(t.min>2?'<button type="button" class="btn small primary"'+(ui.tourTaskId===t.id?' data-tour="start"':'')+' data-action="startt" data-id="'+t.id+'">Start '+taskLen(t)+' min</button><button type="button" class="btn small" data-action="start2" data-id="'+t.id+'">Just 2 min</button><button type="button" class="btn small" data-action="tset" data-id="'+t.id+'">Set time</button>':'<button type="button" class="btn small primary"'+(ui.tourTaskId===t.id?' data-tour="start"':'')+' data-action="start2" data-id="'+t.id+'">Start 2 min</button>')+
@@ -773,7 +850,7 @@ function taskCard(t){
 }
 function addForm(ph){
   var d=ui.draft,mins=[0,15,25,45];if(defLen()>2&&mins.indexOf(defLen())<0)mins.push(defLen());mins.sort(function(a,b){return a-b;});
-  return '<form class="card addform" data-form="add" autocomplete="off"><div class="wins-head" style="margin-bottom:4px"><h2>New task</h2><button type="button" class="btn ghost small" data-action="addtoggle">Close</button></div>'+
+  return '<form class="card addform" data-form="add" autocomplete="off"><div class="wins-head" style="margin-bottom:4px"><h2>'+(hasActivePlan()?'Urgent one-off':'New task')+'</h2><button type="button" class="btn ghost small" data-action="addtoggle">Close</button></div>'+(hasActivePlan()?'<p class="note" style="margin:0 0 8px">For things that pop up, like an assignment due tomorrow. Your plans\u2019 daily work still arrives by itself.</p>':'')+
     '<label class="lbl" for="tTitle">What have you been putting off?</label><input id="tTitle" type="text" maxlength="90" placeholder="'+esc(ph)+'" value="'+esc(d.title)+'">'+
     '<div class="lbl">How long will you give it?</div><div class="chips">'+mins.map(function(m){return chip(m?m+' min':'2 min starter',(d.min||0)===m,'dmin',m);}).join('')+'</div>'+
     '<details class="fold"'+(d.edited||d.when?' open':'')+'><summary>Add details (optional)</summary>'+
@@ -793,23 +870,21 @@ function vToday(){
   var f=ui.tf||(todo.length?'todo':(prog.length?'prog':'done'));
   ui.pd=planDay(todo);if(ui.pd)todo.sort(function(a,b){var x=ui.pd[a.id],y=ui.pd[b.id];return (x?x.s:99999)-(y?y.s:99999);});
   var h='<div class="topbar"><div class="head"><div class="eyebrow">'+esc(new Date().toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}))+'</div><h1>'+greeting()+'</h1><p class="sub">'+esc(tn('What will you begin today?','Choose one thing. Begin.'))+'</p></div>'+
-    (hasActivePlan()?'':'<button type="button" class="roundbtn" data-action="addtoggle" aria-label="Add a task" aria-expanded="'+(ui.addOpen?'true':'false')+'">'+(ui.addOpen?'×':'+')+'</button>')+'</div>';
+    '<button type="button" class="roundbtn" data-action="addtoggle" aria-label="'+(hasActivePlan()?'Add an urgent one-off task':'Add a task')+'" aria-expanded="'+(ui.addOpen?'true':'false')+'">'+(ui.addOpen?'×':'+')+'</button>'+'</div>';
   h+=maximCard();
   h+=welcomeBack()+seasonCard();
-  h+=ringCard(wins,open,sess,mins)+planToday()+weekStrip();
-  if(!S.stage){
-    h+='<section class="card"><h2>One quick question</h2><p class="sub" style="margin:6px 0 12px">What are you working towards? Pick the closest one. It sets your default sprint length.</p><div class="chips">'+
-      stageChips(false)+'</div></section>';
-  }
-  if(S.stage&&(!S.style||ui.styleEdit))h+='<section class="card"><h2>How do you like to work?</h2><p class="sub" style="margin:6px 0 14px">Your timers and breaks will follow this. You can change it later in Report.</p><div class="chips">'+styleChips(false)+'</div>'+customRow()+'<p class="note" style="margin-top:12px">Work minutes / break minutes. Pomodoro is 25/5.</p></section>';
-  if(S.stage&&S.style&&((!S.profile&&!S.pfSkip)||ui.pfEdit))h+=profileCard();
-  if(!hasActivePlan()&&(ui.addOpen||(!S.tasks.length)))h+=addForm(ph);
+  if(((!S.profile&&!S.pfSkip)||ui.pfEdit)&&!isPaused())h+=profileCard();
+  if(S.stage&&ui.styleEdit)h+='<section class="card"><h2>Your own timer</h2><p class="sub" style="margin:6px 0 14px">Set work and break minutes that suit you.</p><div class="chips">'+styleChips(true)+'</div>'+customRow()+'</section>';
+  h+=behindAlert();
+  h+=ringCard(wins,open,sess,mins);
+  if(ui.addOpen||(!hasActivePlan()&&!S.tasks.length))h+=addForm(ph);
   h+='<div class="seg3" role="tablist" aria-label="Task filter">'+[['todo','To do',todo.length],['prog','In progress',prog.length],['done','Done',wins.length]].map(function(x){return '<button type="button" role="tab" class="fpill" aria-pressed="'+(f===x[0]?'true':'false')+'" data-action="tf" data-v="'+x[0]+'"><b>'+x[2]+'</b> '+x[1]+'</button>';}).join('')+'</div>';
   var list=f==='todo'?todo:(f==='prog'?prog:[]);
   if(f==='done'){
     h+=wins.length?'<ul class="tlist">'+wins.map(function(t){return '<li class="card tcard dn"><button type="button" class="check on" data-action="toggle" data-id="'+t.id+'" aria-label="Undo: '+esc(t.title)+'"></button><div class="body"><div class="t">'+esc(t.title)+'</div><div class="s mono">'+new Date(t.done).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})+'</div></div></li>';}).join('')+'</ul>':'<p class="empty">Wins show up here. Even a 2-minute start counts.</p>';
   }else if(list.length)h+='<ul class="tlist">'+list.map(taskCard).join('')+'</ul>';
   else h+='<p class="empty">'+(f==='todo'?(hasActivePlan()?'Today\u2019s duty is done. Rest, and tomorrow\u2019s work will appear here by itself.':tn('Nothing waiting. Tap + to add the one thing you keep putting off.','Nothing waits here. Tap + and name the one thing you have been avoiding.')):'Nothing in progress. Start a task and it shows up here.')+'</p>';
+  h+=planToday()+weekStrip();
   return h;
 }
 function parkCard(){
@@ -877,8 +952,8 @@ function vRace(){
   return r?vRaceDetail(r):vRaceList();
 }
 function vRaceList(){
-  var h='<div class="head"><div class="eyebrow">Long-term goals</div><h1>Race</h1><p class="sub">Turn a big goal into small laps with real dates, up to 2 years.</p></div>';
-  h+='<button type="button" class="btn primary big" data-action="racenew">New race</button>';
+  var h='<div class="head"><div class="eyebrow">Long-term goals</div><h1>Goals</h1><p class="sub">Turn a big goal into small phases with real dates, up to 2 years.</p></div>';
+  h+='<button type="button" class="btn primary big" data-action="racenew">New goal</button>';
   if(!ENT.pro)h+='<p class="note">Free plan: one AI-planned race every '+(Number(ENT.cfg.freeCooldownDays)||3)+' days. Pro has no waiting. <button type="button" class="btn ghost small" data-action="gopro" style="min-height:32px;padding:0 6px;color:var(--accent)">See Pro</button></p>';
   if(!S.races.length)h+='<p class="empty">No races yet. Pick one goal that matters to you.</p>';
   S.races.forEach(function(r){
@@ -912,7 +987,7 @@ var THINK=['Reading your goal','Caramelizing onions','Triangulating your deadlin
 setInterval(function(){var el=document.getElementById('thk');if(!el)return;thkI=(thkI+1+Math.floor(Math.random()*3))%THINK.length;el.textContent=THINK[thkI]+'...';},2200);
 function pingDone(t,keep){try{if(ui.notify&&document.hidden&&typeof Notification!=='undefined'&&Notification.permission==='granted')new Notification('Startline',{body:t});}catch(e){}if(!keep)ui.notify=false;}
 function vRaceForm(){
-  var f=ui.raceForm,h='<button type="button" class="btn ghost small" data-action="raceback" style="align-self:flex-start">Back</button><div class="head"><div class="eyebrow">New race</div><h1>'+(f.step==='questions'?'A few questions':'Set the finish line')+'</h1></div>';
+  var f=ui.raceForm,h='<button type="button" class="btn ghost small" data-action="raceback" style="align-self:flex-start">Back</button><div class="head"><div class="eyebrow">New goal</div><h1>'+(f.step==='questions'?'A few questions':'Set the finish line')+'</h1></div>';
   if(f.loading){
     var m=f.loading==='questions'?'Reading your goal and preparing questions for you.':'Building your plan. Longer plans can take up to a minute.';
     var nb='';
@@ -937,7 +1012,7 @@ function vRaceForm(){
     '<div class="lbl">Time you can give each day</div><div class="chips">'+[15,30,60,90].map(function(m){return chip(m+' min',f.mins===m,'rmins',m);}).join('')+'</div>'+
     (f.err?'<p class="err" style="margin-top:12px" role="alert">'+esc(f.err)+'</p>':'')+
     '<div style="margin-top:16px"><button type="button" class="btn primary big" data-action="racenext">Continue</button></div>'+
-    '<p class="note" style="margin-top:10px">Next you answer a few short questions about your situation, so the plan fits you. Only your goal, your answers and the dates are sent to the AI, and only when you tap Continue. '+(ENT.pro?'':'Free plan: one race every '+(Number(ENT.cfg.freeCooldownDays)||3)+' days.')+'</p></section>';
+    '<p class="note" style="margin-top:10px">Next you answer a few short questions about your situation, so the plan fits you. Only your goal, your answers and the dates are sent to the AI, and only when you tap Continue. '+(ENT.pro?'':'Free plan: one goal every '+(Number(ENT.cfg.freeCooldownDays)||3)+' days.')+'</p></section>';
   return h;
 }
 
@@ -963,8 +1038,8 @@ function opText(r,o){
     case 'rename_step':return 'Reword '+nm+' to "'+o.text+'"';
     case 'set_minutes':return 'Set '+nm+' to '+o.min+' min';
     case 'remove_step':return 'Remove '+nm;
-    case 'add_step':return 'Add to Lap '+(o.lap+1)+': "'+o.text+'" ('+o.min+' min)';
-    case 'rename_lap':return 'Rename Lap '+(o.lap+1)+' to "'+o.title+'"';
+    case 'add_step':return 'Add to Phase '+(o.lap+1)+': "'+o.text+'" ('+o.min+' min)';
+    case 'rename_lap':return 'Rename Phase '+(o.lap+1)+' to "'+o.title+'"';
     case 'set_daily':return 'Daily time: '+o.mins+' min';
     case 'set_best':return 'Best time of day: '+(PARTN[o.best]||o.best).toLowerCase();
   }
@@ -975,7 +1050,8 @@ async function chatSend(msg){
   var c=ui.chat&&ui.chat.rid===r.id?ui.chat:(ui.chat={rid:r.id,msgs:[],ops:null,busy:false,err:'',draft:''});
   msg=clip(msg,500);if(msg.length<2||c.busy)return;
   c.msgs.push({who:'me',t:msg});c.draft='';c.busy=true;c.err='';c.ops=null;render();
-  var body={message:msg,history:c.msgs.slice(0,-1).slice(-6),profile:S.profile||null,race:{name:r.name,goal:r.goal,due:r.due,mins:r.mins,laps:r.laps.map(function(l){return {title:l.title,steps:l.steps.map(function(s){return {id:s.id,text:s.text,min:s.min,done:!!s.done};})};})}};
+  var wk=(r.topics||[]).filter(function(x){return x.weak&&!x.done;}).slice(0,10).map(function(x){return clip(x.t,60);});
+  var body={message:msg,history:c.msgs.slice(0,-1).slice(-6),profile:S.profile||null,race:{name:r.name,goal:r.goal,due:r.due,mins:r.mins,weak:wk,laps:r.laps.map(function(l){return {title:l.title,steps:l.steps.map(function(s){return {id:s.id,text:s.text,min:s.min,done:!!s.done};})};})}};
   try{
     var out=await api('/api/plan/edit',body);
     c.msgs.push({who:'ai',t:clip(out.reply,400)});c.ops=Array.isArray(out.ops)?out.ops:[];
@@ -1004,17 +1080,42 @@ function applyOps(r,ops){
   S.duty[r.id]=null;ensureDuty();save();
   return n;
 }
+function trackBox(r){
+  if(r.demo)return '';
+  r.topics=r.topics||[];r.mocks=r.mocks||[];
+  var tp=r.topics,dn=tp.filter(function(x){return x.done;}).length,pct=tp.length?Math.round(dn/tp.length*100):0;
+  var weak=tp.filter(function(x){return x.weak&&!x.done;});
+  var h='<details class="card fold"'+(ui.trackOpen===r.id?' open':'')+'><summary>Syllabus checklist and test scores</summary>';
+  h+='<div class="lbl">Syllabus or checklist'+(tp.length?' · '+dn+' of '+tp.length+' done':'')+'</div>';
+  if(tp.length)h+='<div class="bar"><i style="width:'+pct+'%"></i></div>';
+  if(weak.length)h+='<p class="note" style="margin-top:8px"><b>Weak areas to revisit:</b> '+weak.slice(0,6).map(function(x){return esc(clip(x.t,40));}).join(', ')+'</p>';
+  h+='<ul class="list" style="margin-top:8px">'+tp.slice(0,120).map(function(x){return '<li class="item'+(x.done?' dn':'')+'"><button type="button" class="check'+(x.done?' on':'')+'" data-action="topic" data-r="'+r.id+'" data-id="'+x.id+'" aria-label="'+(x.done?'Undo':'Mark done')+': '+esc(x.t)+'"></button><div class="body"><div class="t">'+esc(x.t)+'</div></div><div class="acts"><button type="button" class="btn small ghost" data-action="topicweak" data-r="'+r.id+'" data-id="'+x.id+'" aria-pressed="'+(x.weak?'true':'false')+'" aria-label="Mark as weak area">'+(x.weak?'★ Weak':'☆')+'</button><button type="button" class="btn small ghost" data-action="topicrm" data-r="'+r.id+'" data-id="'+x.id+'" aria-label="Remove">×</button></div></li>';}).join('')+'</ul>';
+  h+='<label class="lbl" for="tpIn">Add topics (one per line, or paste a list)</label><textarea id="tpIn" rows="3" maxlength="3000" placeholder="e.g. Unit 1: Contracts" style="width:100%"></textarea><div style="margin-top:8px"><button type="button" class="btn small" data-action="topicadd" data-r="'+r.id+'">Add to checklist</button></div>';
+  var mk=r.mocks.slice(-6);
+  h+='<div class="lbl">Test and mock scores</div>';
+  if(mk.length){
+    var f=mk[0],l=mk[mk.length-1],pf=Math.round(f.score/f.out*100),pl=Math.round(l.score/l.out*100);
+    h+='<ul class="list">'+mk.map(function(m){return '<li class="item"><div class="body"><div class="t">'+m.score+' / '+m.out+' <span class="note">('+Math.round(m.score/m.out*100)+'%)</span></div><div class="s mono">'+esc(fmtDate(m.d))+(m.note?' · '+esc(m.note):'')+'</div></div><div class="acts"><button type="button" class="btn small ghost" data-action="mockrm" data-r="'+r.id+'" data-id="'+m.id+'" aria-label="Remove score">×</button></div></li>';}).join('')+'</ul>'+(mk.length>1?'<p class="note">'+(pl>pf?'Up '+(pl-pf)+' points since your first shown score.':(pl<pf?'Down '+(pf-pl)+' points since your first shown score. Check the weak areas.':'Steady since your first shown score.'))+'</p>':'');
+  }
+  h+='<div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px"><input id="mkS" type="number" min="0" step="any" inputmode="decimal" placeholder="Score" aria-label="Score" style="max-width:90px"><span class="note">out of</span><input id="mkO" type="number" min="1" step="any" inputmode="decimal" placeholder="Total" aria-label="Out of" style="max-width:90px"><input id="mkN" type="text" maxlength="40" placeholder="Note (optional)" aria-label="Note" style="flex:1;min-width:100px"><button type="button" class="btn small" data-action="mockadd" data-r="'+r.id+'">Save score</button></div>';
+  return h+'</details>';
+}
+function shareText(r){
+  var rs=routeStats(r),L=['My goal: '+r.name,'Finish: '+fmtDateY(r.due)+' ('+leftText(r)+')','Progress: '+rs.pct+'% done'];
+  r.laps.forEach(function(l,i){var d=l.steps.filter(function(x){return x.done;}).length;L.push((i+1)+'. '+l.title+' ('+d+'/'+l.steps.length+')');});
+  L.push('Planned with Startline');return L.join('\n');
+}
 function vRaceDetail(r){
   var st=raceStats(r);
-  var h='<div class="row" style="justify-content:space-between"><button type="button" class="btn ghost small" data-action="raceback">All races</button><button type="button" class="btn small primary" data-action="racenew">New race</button></div>'+
-    '<div class="head"><div class="eyebrow">'+(r.demo?'Example race':(r.ai?'Plan written by AI':'Built-in plan'))+(r.related?' · linked to '+esc(r.related):'')+'</div><h1 style="overflow-wrap:anywhere">'+esc(r.name)+'</h1><p class="sub">'+esc(leftText(r))+' · finish '+esc(fmtDate(r.due))+' · '+r.mins+' min a day</p></div>';
+  var h='<div class="row" style="justify-content:space-between"><button type="button" class="btn ghost small" data-action="raceback">All goals</button><button type="button" class="btn small primary" data-action="racenew">New goal</button></div>'+
+    '<div class="head"><div class="eyebrow">'+(r.demo?'Example goal':(r.ai?'Plan written by AI':'Built-in plan'))+(r.related?' · linked to '+esc(r.related):'')+'</div><h1 style="overflow-wrap:anywhere">'+esc(r.name)+'</h1><p class="sub">'+esc(leftText(r))+' · finish '+esc(fmtDate(r.due))+' · '+r.mins+' min a day</p></div>';
   if(r.note)h+='<p class="note">'+esc(r.note)+'</p>';
   if(r.realism)h+='<section class="card"><div class="tag">Is this realistic?</div><p style="margin-top:6px">'+esc(r.realism)+'</p></section>';
   h+=vRoute(r);
   r.laps.forEach(function(l,i){
     var d=l.steps.filter(function(s){return s.done;}).length;
-    if(!(i===st.cur||(ui.lapOpen&&ui.lapOpen[l.id]))){h+='<button type="button" class="card racecard lapsum" data-action="lapopen" data-v="'+l.id+'"><div><div class="tag">'+(d===l.steps.length?'Done':'By '+esc(fmtDate(l.due)))+'</div><h2 style="margin-top:4px">Lap '+(i+1)+' · '+esc(l.title)+'</h2></div><span class="tag mono">'+d+'/'+l.steps.length+' steps</span></button>';return;}
-    h+='<section class="card lap"><div class="laphead"><h2>Lap '+(i+1)+' · '+esc(l.title)+'</h2><span class="tag">by '+esc(fmtDate(l.due))+' · '+d+'/'+l.steps.length+'</span></div>'+(l.focus?'<p class="sub" style="margin:4px 0 6px">'+esc(l.focus)+'</p>':'')+(l.rhythm?'<p class="note mono" style="margin:0 0 8px">Weekly rhythm: '+esc(l.rhythm)+'</p>':'')+'<ul class="list">';
+    if(!(i===st.cur||(ui.lapOpen&&ui.lapOpen[l.id]))){h+='<button type="button" class="card racecard lapsum" data-action="lapopen" data-v="'+l.id+'"><div><div class="tag">'+(d===l.steps.length?'Done':'By '+esc(fmtDate(l.due)))+'</div><h2 style="margin-top:4px">Phase '+(i+1)+' · '+esc(l.title)+'</h2></div><span class="tag mono">'+d+'/'+l.steps.length+' steps</span></button>';return;}
+    h+='<section class="card lap"><div class="laphead"><h2>Phase '+(i+1)+' · '+esc(l.title)+'</h2><span class="tag">by '+esc(fmtDate(l.due))+' · '+d+'/'+l.steps.length+'</span></div>'+(l.focus?'<p class="sub" style="margin:4px 0 6px">'+esc(l.focus)+'</p>':'')+(l.rhythm?'<p class="note mono" style="margin:0 0 8px">Weekly rhythm: '+esc(l.rhythm)+'</p>':'')+'<ul class="list">';
     l.steps.forEach(function(s){
       var tk=s.taskId?taskById(s.taskId):null,inToday=tk&&!tk.done;
       h+='<li class="item'+(s.done?' dn':'')+'"><button type="button" class="check'+(s.done?' on':'')+'" data-action="stepToggle" data-r="'+r.id+'" data-s="'+s.id+'" aria-label="'+(s.done?'Undo step':'Mark step done')+': '+esc(s.text)+'"></button>'+
@@ -1023,9 +1124,9 @@ function vRaceDetail(r){
     });
     h+='</ul>'+lapTools(r,l,i,st)+'</section>';
   });
-  h+=chatBox(r);
-  h+='<details class="card fold"'+(ui.confirmDel?' open':'')+'><summary>Race settings</summary>'+dueTool(r);
-  h+=ui.confirmDel?'<div class="row"><span class="note">Delete this race?</span><button type="button" class="btn small primary" data-action="racedelyes" data-id="'+r.id+'">Yes, delete</button><button type="button" class="btn small" data-action="racedelno">Keep it</button></div>':'<button type="button" class="btn ghost small" data-action="racedel" style="align-self:flex-start">Delete this race</button>';
+  h+=trackBox(r)+chatBox(r);
+  h+='<details class="card fold"'+(ui.confirmDel?' open':'')+'><summary>Goal settings</summary>'+dueTool(r)+(r.demo?'':restTool(r)+'<div style="margin-top:10px"><button type="button" class="btn small" data-action="shareplan" data-id="'+r.id+'">Share this plan</button></div>');
+  h+=ui.confirmDel?'<div class="row"><span class="note">Delete this goal?</span><button type="button" class="btn small primary" data-action="racedelyes" data-id="'+r.id+'">Yes, delete</button><button type="button" class="btn small" data-action="racedelno">Keep it</button></div>':'<button type="button" class="btn ghost small" data-action="racedel" style="align-self:flex-start">Delete this goal</button>';
   h+='</details>';
   return h;
 }
@@ -1060,6 +1161,17 @@ function stats(){
   o.streak=streak;
   return o;
 }
+function weekGlance(){
+  var sod=startOfDay(Date.now()),dow=(new Date(sod).getDay()+6)%7,mon=addDays(sod,-dow),N=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],rows=[],mx=30,i;
+  for(i=0;i<7;i++){
+    var d=addDays(mon,i),e=d+DAY;
+    var f=S.sessions.filter(function(x){return x.start>=d&&x.start<e;}).reduce(function(a,x){return a+x.min;},0);
+    var dn=S.tasks.filter(function(t){return t.done&&t.done>=d&&t.done<e;}).length;
+    var pl=d===sod?S.tasks.filter(function(t){return !t.done&&t.duty===ymd(d);}).reduce(function(a,t){return a+(t.min||0);},0):0;
+    rows.push({n:N[i],f:f,dn:dn,pl:pl,now:d===sod,off:inPause(d)});mx=Math.max(mx,f+pl);
+  }
+  return '<section class="card"><h2>Your week</h2><ul class="list" style="margin-top:8px">'+rows.map(function(x){return '<li class="item" style="display:block"><div class="row" style="justify-content:space-between"><b'+(x.now?' style="color:var(--accent)"':'')+'>'+x.n+(x.now?' · today':'')+'</b><span class="note mono">'+(x.off?'rest day':x.f+' min · '+x.dn+' done'+(x.pl?' · '+x.pl+' min to go':''))+'</span></div><div class="bar" style="margin-top:4px"><i style="width:'+Math.round(x.f/mx*100)+'%"></i></div></li>';}).join('')+'</ul></section>';
+}
 function vReport(){
   var o=stats(),h='<div class="head"><div class="eyebrow">Effectiveness</div><h1>Is it working?</h1></div>';
   h+='<section class="card hero">';
@@ -1091,14 +1203,15 @@ function vReport(){
     '<div class="metric"><div class="k">Focus time<span class="n">Last 7 days</span></div><div class="val">'+o.focus+' min</div></div>'+
     '<div class="metric"><div class="k">Follow-through streak<span class="n">'+(o.streak?'Days in a row with a finished task':'Ready when you are.')+'</span></div><div class="val">'+o.streak+' day'+(o.streak===1?'':'s')+'</div></div>'+
     '<div class="metric"><div class="k">Felt focus<span class="n">Your own rating, last 7 days</span></div><div class="val">'+(o.feel==null?'–':o.feel.toFixed(1)+' / 5')+'</div></div></section>';
+  h+=weekGlance();
   h+='<details class="card fold"><summary>Settings and account</summary>'+accountRow()+planRow()+'<div class="lbl">What you are working towards</div><div class="chips">'+
     stageChips(true)+'</div>'+
-    '<div class="lbl">Your day</div><div class="row"><button type="button" class="btn small" data-action="pfedit">'+(S.profile?'Change my wake, sleep and busy times':'Set my wake, sleep and busy times')+'</button></div><div class="lbl">Look</div><div class="chips">'+chip('Fresh',skinNow()==='fresh','skin','fresh')+chip('Stoic',skinNow()==='stoic','skin','stoic')+chip('Classic',skinNow()==='classic','skin','classic')+'</div><div class="lbl">How you like to work</div><div class="chips">'+styleChips(true)+'</div>'+customRow()+(styleObj()&&styleObj().brk?'<div class="lbl">Longer break after every 4 sprints</div><div class="chips">'+[[0,'Off'],[15,'15 min'],[20,'20 min'],[30,'30 min']].map(function(x){return chip(x[1],(S.longBrk||0)===x[0],'longbrk',x[0]);}).join('')+'</div>':'')+remindRow()+'<div class="lbl">Break and help</div><div class="row">'+(isPaused()?'<button type="button" class="btn small primary" data-action="resumeplan">Resume my plans</button>':'<button type="button" class="btn small" data-action="pauseplan">Pause my plans</button>')+'<button type="button" class="btn small" data-action="tour">Replay the tour</button></div><p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
+    '<div class="lbl">Your day</div><div class="row">'+(window.Android&&window.Android.remind?'<button type="button" class="btn small" data-action="remapp">Reminders at task times: '+(S.remApp===false?'off':'on')+'</button><button type="button" class="btn small" data-action="battery">If reminders or the lock stop</button>':'')+'</div><div class="row" style="margin-top:8px"><button type="button" class="btn small" data-action="pfedit">'+(S.profile?'Change my wake, sleep and busy times':'Set my wake, sleep and busy times')+'</button></div><div class="lbl">Look</div><div class="chips">'+chip('Fresh',skinNow()==='fresh','skin','fresh')+chip('Stoic',skinNow()==='stoic','skin','stoic')+chip('Classic',skinNow()==='classic','skin','classic')+'</div><div class="lbl">How you like to work</div><div class="chips">'+styleChips(true)+'</div>'+customRow()+(styleObj()&&styleObj().brk?'<div class="lbl">Longer break after every 4 sprints</div><div class="chips">'+[[0,'Off'],[15,'15 min'],[20,'20 min'],[30,'30 min']].map(function(x){return chip(x[1],(S.longBrk||0)===x[0],'longbrk',x[0]);}).join('')+'</div>':'')+remindRow()+'<div class="lbl">Break and help</div><div class="row">'+(isPaused()?'<button type="button" class="btn small primary" data-action="resumeplan">Resume my plans</button>':'<button type="button" class="btn small" data-action="pauseplan">Pause my plans</button>')+'<button type="button" class="btn small" data-action="tour">Replay the tour</button></div><p class="note" style="margin-top:14px">Your tasks and progress stay on this device. No account, no name needed. Erasing them keeps your subscription.</p>'+
     '<div style="margin-top:12px">'+(ui.confirmErase?'<div class="row"><span class="note">'+(ENT.signedIn?'Erase your progress here and in your account?':'Erase everything on this device?')+'</span><button type="button" class="btn small primary" data-action="eraseyes">Yes, erase</button><button type="button" class="btn small" data-action="eraseno">Keep it</button></div>':'<button type="button" class="btn small" data-action="erase">Erase all my data</button>')+'</div>'+deleteAcctRow()+'</details>';
   return h;
 }
 function renderTabs(){
-  var t=[['today','Today',I.check],['focus','Focus',I.timer],['race','Race',I.flag],['report','Report',I.chart]];
+  var t=[['today','Today',I.check],['focus','Focus',I.timer],['race','Goals',I.flag],['report','Report',I.chart]];
   $('#tabs').innerHTML=t.map(function(x){return '<button type="button" class="tab" data-action="tab" data-v="'+x[0]+'"'+(ui.tab===x[0]?' aria-current="page"':'')+'>'+x[2]+'<span>'+x[1]+'</span></button>';}).join('');
 }
 function render(){
@@ -1108,14 +1221,15 @@ function render(){
   scr.scrollTop=top;renderTabs();
   var gate=!ENT.signedIn;$('#app').classList.toggle('gated',gate);
   var ov=$('#overlay');if(!ov){ov=document.createElement('div');ov.id='overlay';$('#app').appendChild(ov);}
-  ov.innerHTML=ageState()!=='1'?vAge():ui.conflict?vConflict():(gate?(ui.booted?vLogin():'<div class="splash"><span class="badge">Startline</span></div>'):(ui.login?vLogin():(ui.paywall?vPaywall():'')));
-  if(ageState()==='1'&&(gate?ui.booted:ui.login)&&!ui.conflict)mountAuth();
-  var ap=$('#app');if(ap)ap.classList.toggle('touring',showTour()&&ageState()==='1'&&!ui.login&&!ui.paywall&&!ui.conflict);
+  ov.innerHTML=!ageOK()?vAge():ui.conflict?vConflict():(gate?(ui.booted?vLogin():'<div class="splash"><span class="badge">Startline</span></div>'):(ui.login?vLogin():(ui.paywall?vPaywall():'')));
+  if(ageOK()&&(gate?ui.booted:ui.login)&&!ui.conflict)mountAuth();
+  var ap=$('#app');if(ap)ap.classList.toggle('touring',showTour()&&ageOK()&&!ui.login&&!ui.paywall&&!ui.conflict);
   if(ui.fx&&animOK()){scr.classList.remove('enter');void scr.offsetWidth;scr.classList.add('enter');}
   ui.fx=false;
   tourPaint();
   tourApply();
   syncBlock();
+  try{syncReminders();}catch(e){}
 }
 
 /* ---------- race building ---------- */
@@ -1127,7 +1241,7 @@ function normalizeLaps(out,cap){
       return {text:clip(s&&s.text,120),min:m};
     }).filter(function(s){return s.text;});
     var w=steps.reduce(function(a,x){return a+x.min;},0)||1;
-    return {title:clip(l&&l.title,40)||'Next lap',focus:clip(l&&l.focus,170),rhythm:clip(l&&l.rhythm,170),milestone:clip(l&&l.milestone,60),weight:w,steps:steps};
+    return {title:clip(l&&l.title,40)||'Next phase',focus:clip(l&&l.focus,170),rhythm:clip(l&&l.rhythm,170),milestone:clip(l&&l.milestone,60),weight:w,steps:steps};
   }).filter(function(l){return l.steps.length;});
   return laps.length>=3?{name:clip(out.race_name,48),realism:clip(out.realism,500),laps:laps,best:PARTN[out.best]?out.best:'',related:clip(out.related,60),kind2:['study','work','fitness','health','creative','life'].indexOf(out.kind)>=0?out.kind:''}:null;
 }
@@ -1222,7 +1336,7 @@ async function buildRace(){
   if(ui.raceForm!==f)return;
   if(!plan){planErr(f,{code:'ai_failed'});return;}
   var laps=plan.laps,name=plan.name||clip(goal,48);
-  var r=makeRace(goal,name,due,f.mins,laps,ai,false);r.note=note;if(plan&&plan.realism)r.realism=plan.realism;if(plan&&plan.kind2)r.kind=plan.kind2;if(plan&&plan.best)r.best=plan.best;if(plan&&plan.related)r.related=plan.related;if(useEv)r.event={name:clip(f.event.name,60),date:f.event.date,source:clip(f.event.source,60),note:clip(f.event.note,100)};
+  var r=makeRace(goal,name,due,f.mins,laps,ai,false);r.note=note;if(plan&&plan.realism)r.realism=plan.realism;if(plan&&plan.kind2)r.kind=plan.kind2;if(plan&&plan.best)r.best=plan.best;if(plan&&plan.related)r.related=plan.related;if(kindOf(r)==='fitness'||kindOf(r)==='health')r.rest=[0];if(useEv)r.event={name:clip(f.event.name,60),date:f.event.date,source:clip(f.event.source,60),note:clip(f.event.note,100)};
   clearDemo();S.races.unshift(r);S.rdraft=null;ensureDuty();ui.tf='todo';save();
   if(ai&&!ENT.pro)ENT.aiFree=false;
   ui.raceForm=null;ui.raceOpen=r.id;ui.reset=true;render();pingDone('Your plan is ready.');
@@ -1234,9 +1348,12 @@ function act(a,d){
   var T=S.timer;
   switch(a){
     case 'tab':if(d.v==='today')ensureDuty();ui.fx=true;ui.crewOpen=false;ui.tab=d.v;ui.reset=true;ui.confirmErase=false;ui.confirmDel=false;render();if(d.v==='race')buddyPing(false,true);break;
-    case 'stage':S.stage=d.v;save();render();break;
+    case 'stage':if(ui.pf)readPf();S.stage=d.v;save();render();break;
     case 'pfpeak':readPf();ui.pf.peak=d.v;render();break;
-    case 'pfsave':{readPf();var p=ui.pf,b0=p.busy[0];S.profile={wake:p.wake||'07:00',sleep:p.sleep||'23:00',peak:p.peak||'',busy:(b0&&b0.from&&b0.to)?[{from:b0.from,to:b0.to,label:b0.label||''}]:[]};ui.pf=null;ui.pfEdit=false;save();render();toast('Saved. Today is now sorted for your day.');break;}
+    case 'pfday':{readPf();var pp=d.v.split(':'),bb=ui.pf.busy[Number(pp[0])];if(bb){bb.days=bb.days||[0,1,2,3,4,5,6];var di2=bb.days.indexOf(Number(pp[1]));if(di2>=0)bb.days.splice(di2,1);else bb.days.push(Number(pp[1]));}render();break;}
+    case 'pfadd':readPf();ui.pf.busy.push({from:'',to:'',label:'',days:[1,2,3,4,5]});render();break;
+    case 'pfrm':readPf();ui.pf.busy.splice(Number(d.v),1);render();break;
+    case 'pfsave':{readPf();var p=ui.pf;S.profile={wake:p.wake||'07:00',sleep:p.sleep||'23:00',peak:p.peak||'',busy:p.busy.filter(function(b){return b.from&&b.to&&(b.days||[1]).length;}).map(function(b){return {from:b.from,to:b.to,label:b.label||'',days:b.days||[0,1,2,3,4,5,6]};})};ui.pf=null;ui.pfEdit=false;save();render();toast('Saved. Today is now sorted for your day.');break;}
     case 'pfskip':S.pfSkip=true;save();render();break;
     case 'pfclose':ui.pf=null;ui.pfEdit=false;render();break;
     case 'pfedit':ui.pf=null;ui.pfEdit=true;ui.tab='today';ui.reset=true;render();break;
@@ -1275,6 +1392,18 @@ function act(a,d){
     case 'setcustomlen':{var cv=Math.round(Number(($('#cLen')||{}).value));if(!(cv>=1&&cv<=180)){toast('Type a number from 1 to 180.');break;}ui.len=cv;render();break;}
     case 'customsave':{var w=Math.round(Number(($('#cWork')||{}).value)),bk=Math.round(Number(($('#cBrk')||{}).value));if(!(w>=1&&w<=180)||!(bk>=0&&bk<=60)){toast('Work 1 to 180 minutes, break 0 to 60.');break;}S.custom={work:w,brk:bk};ui.len=null;ui.styleEdit=false;save();render();toast('Your timer is saved.');break;}
     case 'dutyfix':S.duty[d.id]=null;ensureDuty();ui.tf='todo';save();render();break;
+    case 'bhmore':{var r1=S.races.find(function(x){return x.id===d.id;});if(!r1)break;r1.mins=Math.min(180,(r1.mins||30)+15);resetToday();ensureDuty();save();render();toast('Daily time is now '+r1.mins+' min for this goal.');break;}
+    case 'bhdate':{var r2=S.races.find(function(x){return x.id===d.id;});if(!r2)break;r2.due=ymd(addDays(parseYmd(r2.due),Number(d.v)||1));if(r2.event){r2.event.date=r2.due;r2.event.note='date edited by you';}respread(r2);save();render();toast('Finish date moved. Phases re-planned.');break;}
+    case 'bhspread':{var r3=S.races.find(function(x){return x.id===d.id;});if(!r3)break;respread(r3);save();render();toast('Dates re-planned.');break;}
+    case 'remapp':S.remApp=S.remApp===false;ui.remLast='';save();render();toast(S.remApp===false?'Reminders off.':'Reminders on.');break;
+    case 'battery':try{window.Android.openBattery();}catch(e){}break;
+    case 'topic':case 'topicweak':case 'topicrm':{var tr=S.races.find(function(x){return x.id===d.r;});if(!tr)break;var ti=(tr.topics||[]).find(function(x){return x.id===d.id;});if(!ti)break;if(a==='topic')ti.done=ti.done?null:Date.now();else if(a==='topicweak')ti.weak=!ti.weak;else tr.topics=tr.topics.filter(function(x){return x.id!==d.id;});ui.trackOpen=tr.id;save();render();break;}
+    case 'topicadd':{var tr2=S.races.find(function(x){return x.id===d.r;});if(!tr2)break;var el=$('#tpIn'),ln=(el?el.value:'').split(/\n+/).map(function(x){return clip(x.replace(/^[\-\*\u2022\d\.\)\s]+/,''),90);}).filter(Boolean);if(!ln.length){toast('Type or paste at least one topic.');break;}tr2.topics=(tr2.topics||[]).concat(ln.map(function(t){return {id:uid(),t:t,done:null,weak:false};})).slice(0,300);ui.trackOpen=tr2.id;save();render();toast(ln.length+' added.');break;}
+    case 'mockadd':{var tr3=S.races.find(function(x){return x.id===d.r;});if(!tr3)break;var sc=Number(($('#mkS')||{}).value),ot=Number(($('#mkO')||{}).value);if(!(sc>=0)||!(ot>0)||sc>ot*1.5){toast('Enter your score and the total.');break;}tr3.mocks=(tr3.mocks||[]).concat([{id:uid(),d:ymd(Date.now()),score:sc,out:ot,note:clip(($('#mkN')||{}).value,40)}]).slice(-40);ui.trackOpen=tr3.id;save();render();toast('Score saved.');break;}
+    case 'mockrm':{var tr4=S.races.find(function(x){return x.id===d.r;});if(!tr4)break;tr4.mocks=(tr4.mocks||[]).filter(function(x){return x.id!==d.id;});ui.trackOpen=tr4.id;save();render();break;}
+    case 'shareplan':{var sr=S.races.find(function(x){return x.id===d.id;});if(!sr)break;var tx=shareText(sr);if(navigator.share){navigator.share({text:tx}).catch(function(){});}else{try{navigator.clipboard.writeText(tx).then(function(){toast('Plan copied. Paste it anywhere.');});}catch(e){toast('Sharing is not available here.');}}break;}
+    case 'daymode':setDayMode(d.v==='none'?'':d.v);break;
+    case 'rest':{var rr=S.races.find(function(x){return x.id===d.id;});if(!rr)break;var di=Number(d.v);rr.rest=rr.rest||[];var ix=rr.rest.indexOf(di);if(ix>=0)rr.rest.splice(ix,1);else rr.rest.push(di);resetToday();ensureDuty();save();render();break;}
     case 'freeset':ui.free=Number(d.v)||0;render();break;
     case 'gonext':{var gt=taskById(d.id);if(gt)startSprint(gt.id,sprintFor(gt));break;}
     case 'ahead':{var ar=S.races.find(function(x){return x.id===d.id;}),na2=ar?nextAhead(ar):null;if(!na2)break;var left=Math.max(5,na2.s.min-(na2.s.spent||0)),ch=Math.min(left,ui.free||30);if(left>ch&&left-ch<10)ch=left;var nt={id:uid(),title:na2.s.text,step:suggestStep(na2.s.text),min:ch,created:Date.now(),started:null,done:null,duty:ymd(Date.now()),rid:ar.id,sid:na2.s.id,part:ch<left?'Part of a '+Math.round(na2.s.min/5)*5+' min step':'',lap:na2.l.title,bonus:1};S.tasks.push(nt);na2.s.taskId=nt.id;save();startSprint(nt.id,ui.free?Math.max(2,Math.min(ui.free,ch)):taskLen(nt));break;}
@@ -1317,7 +1446,7 @@ function act(a,d){
     case 'replan':replanAll();break;
     case 'shrink':shrinkLap(d.r,d.s);break;
     case 'unshrink':unshrinkLap(d.r,d.s);break;
-    case 'racedue':(function(){var r=S.races.find(function(x){return x.id===d.id;}),v=($('#rDue')||{}).value;if(!r||!/^\d{4}-\d{2}-\d{2}$/.test(v||''))return;var t=parseYmd(v);if(t<addDays(startOfDay(Date.now()),1)||t>addDays(startOfDay(Date.now()),730)){toast('Pick a date within the next 2 years.');return;}r.due=v;if(r.event){r.event.date=v;r.event.note='date edited by you';}respread(r);save();render();toast('Finish date updated. Laps re-planned.');})();break;
+    case 'racedue':(function(){var r=S.races.find(function(x){return x.id===d.id;}),v=($('#rDue')||{}).value;if(!r||!/^\d{4}-\d{2}-\d{2}$/.test(v||''))return;var t=parseYmd(v);if(t<addDays(startOfDay(Date.now()),1)||t>addDays(startOfDay(Date.now()),730)){toast('Pick a date within the next 2 years.');return;}r.due=v;if(r.event){r.event.date=v;r.event.note='date edited by you';}respread(r);save();render();toast('Finish date updated. Phases re-planned.');})();break;
     case 'seen':S.seen[d.v]=1;save();render();break;
     case 'newprefill':ui.tab='race';act('racenew',{});if(ui.raceForm){var tp=TPL[Number(d.v)]||TPL[0];ui.raceForm.goal=d.v==='4'?'Do well this semester':tp[1];ui.raceForm.weeks=d.v==='4'?16:tp[2];render();}break;
     case 'rtpl':if(ui.raceForm){var tq=TPL[Number(d.v)];if(tq){ui.raceForm.goal=tq[1];ui.raceForm.weeks=tq[2];saveDraft();render();}}break;
@@ -1337,7 +1466,7 @@ function act(a,d){
     case 'bcopy':(function(){var t='Join my crew on Startline. Invite code: '+d.v+' at '+location.origin;try{navigator.clipboard.writeText(t).then(function(){toast('Invite copied.');},function(){toast('Code: '+d.v);});}catch(e){toast('Code: '+d.v);}})();break;
     case 'bleave':api('/api/buddy/leave',{code:d.v}).catch(function(){});setRooms(rooms().filter(function(x){return x.code!==d.v;}));delete ui.rv[d.v];render();break;
     case 'paywallclose':case 'paywallbg':ui.paywall=null;ui.payErr='';render();break;
-    case 'subscribe':if(!ENT.signedIn){ui.afterLogin='checkout';ui.login=true;ui.loginErr='';render();}else startCheckout();break;
+    case 'subscribe':if(ageState()==='2'){ui.payErr='Paid plans need a parent or guardian. Ask them to set it up.';render();break;}if(!ENT.signedIn){ui.afterLogin='checkout';ui.login=true;ui.loginErr='';render();}else startCheckout();break;
     case 'mailsend':mailSend();break;
     case 'mailverify':mailVerify();break;
     case 'mailchange':ui.mailSent=false;ui.loginErr='';render();break;
@@ -1345,6 +1474,7 @@ function act(a,d){
     case 'loginbg':case 'loginclose':if(!ENT.signedIn)break;ui.login=false;ui.afterLogin='';render();break;
     case 'demologin':onDemo();break;
     case 'ageok':checkAge();break;
+    case 'parentok':{var pc=$('#parentOk');if(!pc||!pc.checked){ui.ageErr='Please tick the box once a parent or guardian agrees.';render();break;}ui.ageErr='';setAge('2');render();break;}
     case 'signout':doSignOut();break;
     case 'useCloud':resolveConflict(true);break;
     case 'keepLocal':resolveConflict(false);break;
@@ -1458,7 +1588,7 @@ function nextStepInfo(){
   return null;
 }
 function nextStepText(){
-  var n=nextStepInfo();if(n)return 'Lap '+(n.li+1)+': '+n.s.text+' ('+Math.min(n.s.min,10)+' min is enough to start)';
+  var n=nextStepInfo();if(n)return 'Phase '+(n.li+1)+': '+n.s.text+' ('+Math.min(n.s.min,10)+' min is enough to start)';
   var o=openTasks()[0];return o?('Start with: '+o.step+(o.when?' ('+o.when+')':'')):'Add one thing you have been putting off.';
 }
 function restartNow(){
@@ -1469,7 +1599,7 @@ function restartNow(){
   }else t=openTasks()[0]||null;
   ui.welcomeOff=ymd(Date.now());startSprint(t?t.id:null,2);
 }
-function replanAll(){var n=0;S.races.forEach(function(r){if(!r.demo){respread(r);n++;}});ui.welcomeOff=ymd(Date.now());save();render();toast(n?'Dates re-planned from today.':'No races to re-plan.');}
+function replanAll(){var n=0;S.races.forEach(function(r){if(!r.demo){respread(r);n++;}});ui.welcomeOff=ymd(Date.now());save();render();toast(n?'Dates re-planned from today.':'No goals to re-plan.');}
 function shrinkLap(rid,lid){
   var r=S.races.find(function(x){return x.id===rid;}),l=r&&r.laps.find(function(x){return x.id===lid;});if(!l)return;
   var und=l.steps.filter(function(s){return !s.done;});if(und.length<2)return;
@@ -1492,20 +1622,26 @@ function vRoute(r){
   var rs=routeStats(r),st=raceStats(r),cap=capacity(r),over=daysLeft(r)<0;
   var h='<section class="card"><div class="wins-head"><h2>Route to your goal</h2><span class="tag">'+rs.pct+'% there</span></div><div class="bar"><i style="width:'+rs.pct+'%"></i></div>'+
     '<p class="note mono" style="margin:8px 0 0">'+(over?'Past the finish date':rs.state)+' · the plan expects '+rs.exp+'% by today · '+esc(leftText(r))+'</p>';
-  if(!r.demo&&(rs.state==='behind'||over))h+='<p style="margin-top:10px">You are behind the dates. That is fixable: re-plan spreads what is left over the days you still have.</p><button type="button" class="btn small primary" data-action="replan">Re-plan my dates</button>';
-  if(!r.demo&&cap.need>cap.have&&!over)h+='<p class="note" style="margin-top:10px">Heads up: about '+Math.round(cap.need/60)+' h of steps are left, but your daily time gives about '+Math.round(cap.have/60)+' h before the finish. Shrink a lap, add daily time, or move the date.</p>';
+  var bi=behindInfo(r);
+  if(bi&&!over)h+='<p style="margin-top:10px">You are about '+bi.days+' days behind. Pick how to fix it.</p>'+behindButtons(r,bi);
+  else if(!r.demo&&(rs.state==='behind'||over))h+='<p style="margin-top:10px">You are behind the dates. That is fixable: re-plan spreads what is left over the days you still have.</p><button type="button" class="btn small primary" data-action="replan">Re-plan my dates</button>';
+  if(!r.demo&&cap.need>cap.have&&!over)h+='<p class="note" style="margin-top:10px">Heads up: about '+Math.round(cap.need/60)+' h of steps are left, but your daily time gives about '+Math.round(cap.have/60)+' h before the finish. Shrink a phase, add daily time, or move the date.</p>';
   h+='<ol class="route"><li class="rt done"><i></i><div><b>Start</b><span>'+esc(fmtDateY(ymd(r.created)))+'</span></div></li>';
   r.laps.forEach(function(l,i){
     var full=l.steps.length>0&&l.steps.every(function(s){return s.done;}),now=i===st.cur;
-    h+='<li class="rt'+(full?' done':'')+(now?' now':'')+'"><i></i><div><b>Lap '+(i+1)+' · '+esc(l.title)+'</b><span>'+esc(fmtDateY(l.due))+'</span>'+(l.milestone?'<span>Checkpoint: '+esc(l.milestone)+'</span>':'')+(now?'<em>You are here</em>':'')+'</div></li>';
+    h+='<li class="rt'+(full?' done':'')+(now?' now':'')+'"><i></i><div><b>Phase '+(i+1)+' · '+esc(l.title)+'</b><span>'+esc(fmtDateY(l.due))+'</span>'+(l.milestone?'<span>Checkpoint: '+esc(l.milestone)+'</span>':'')+(now?'<em>You are here</em>':'')+'</div></li>';
   });
   h+='<li class="rt fin'+(st.cur<0?' done':'')+'"><i></i><div><b>'+esc(r.event?r.event.name:'Finish line')+'</b><span>'+esc(fmtDateY(r.due))+'</span>'+(r.event?'<span>'+(r.event.source?'Source: '+esc(r.event.source)+'. ':'')+'Dates can change, so confirm on the official site.</span>':'')+'</div></li></ol></section>';
   return h;
 }
+function restTool(r){
+  var N=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  return '<div><div class="lbl">Rest days for this goal</div><div class="chips">'+N.map(function(n,i){return chip(n,!!(r.rest&&r.rest.indexOf(i)>=0),'rest',i,' data-id="'+r.id+'"');}).join('')+'</div><p class="note" style="margin-top:6px">No work is added on these days.</p></div>';
+}
 function dueTool(r){
   if(r.demo)return '';
   var min=ymd(addDays(startOfDay(Date.now()),1));
-  return '<div><label class="lbl" for="rDue">Finish date</label><div class="row"><input id="rDue" type="date" min="'+min+'" value="'+esc(r.due)+'" style="max-width:190px"><button type="button" class="btn small" data-action="racedue" data-id="'+r.id+'">Update and re-plan</button></div><p class="note" style="margin-top:8px">If the real date changes, set it here. Your remaining laps are re-spread to fit.</p></div>';
+  return '<div><label class="lbl" for="rDue">Finish date</label><div class="row"><input id="rDue" type="date" min="'+min+'" value="'+esc(r.due)+'" style="max-width:190px"><button type="button" class="btn small" data-action="racedue" data-id="'+r.id+'">Update and re-plan</button></div><p class="note" style="margin-top:8px">If the real date changes, set it here. Your remaining phases are re-spread to fit.</p></div>';
 }
 function pauseBtn(){
   if(isPaused()||!S.races.some(function(r){return !r.demo;})&&!S.tasks.some(function(t){return !t.demo;}))return '';
@@ -1710,7 +1846,7 @@ var TOUR=[
  {id:'add',t:'Add one thing you keep putting off',b:'Type it in the highlighted box, then tap Add task. It can be anything: an assignment, an email, a workout.',tip:'Optional details are tucked away so this stays simple.',tab:'today',sel:'#tTitle',wait:'task'},
  {id:'start',t:'Now, just begin',b:'This is your task. Tap Start 2 min to begin. You do not have to finish it, only start.',tip:'Two minutes is enough to get past the hardest part.',tab:'today',sel:'[data-tour="start"]',needs:'task'},
  {id:'focus',t:'Focus: timed sprints',b:'Pick a task and a length here. Your timer follows your work style, like Pomodoro, and you get a break when a sprint ends.',tab:'focus',sel:'#fTask,#clock'},
- {id:'race',t:'Race: big goals, real dates',b:'For a bigger goal like an exam, an interview or a fitness target, tap New race. Answer a few questions and get a plan made for you, up to 2 years long. For dated goals like CAT, it looks up the real date.',tip:'The route map shows how close you are. If you fall behind, one tap re-plans your dates.',tab:'race',sel:'[data-action="racenew"]'},
+ {id:'race',t:'Goals: big goals, real dates',b:'For a bigger goal like an exam, an interview or a fitness target, tap New goal. Answer a few questions and get a plan made for you, up to 2 years long. For dated goals like CAT, it looks up the real date.',tip:'The route map shows how close you are. If you fall behind, one tap re-plans your dates.',tab:'race',sel:'[data-action="racenew"]'},
  {id:'crew',t:'Crew: goals with friends',b:'Start a crew to share one goal with friends. It is locked once created, and everyone ticks off their own steps.',tab:'race',sel:'[data-action="crewopen"]'},
  {id:'report',t:'Report: see that it works',b:'After two weeks you can see how much sooner you start compared with your first week. Your streak forgives one missed day a week. Pause, daily nudges and this tour live under Settings.',tab:'report',sel:'.hero'},
  {id:'done',t:'You are ready',b:'That is everything. Start with one small thing today.',tab:'today'}
@@ -1759,7 +1895,7 @@ function tourInner(){
 }
 function tourKey(){var st=TOUR[ui.tourStep];return ui.tourStep+'|'+((st&&st.wait==='task'&&!hasOwnTask())?1:0);}
 function tourPaint(){
-  var show=showTour()&&ageState()==='1'&&!ui.login&&!ui.paywall&&!ui.conflict,box=$('#tourbox'),app=$('#app');
+  var show=showTour()&&ageOK()&&!ui.login&&!ui.paywall&&!ui.conflict,box=$('#tourbox'),app=$('#app');
   if(!show||!app){if(box)box.remove();return;}
   var pct=Math.round((ui.tourStep+1)/TOUR.length*100);
   if(!box){

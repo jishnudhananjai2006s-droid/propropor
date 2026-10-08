@@ -74,7 +74,7 @@ class MainActivity : Activity() {
             .put("usage", Focus.hasUsageAccess(this@MainActivity))
             .put("overlay", Focus.hasOverlay(this@MainActivity))
             .put("a11y", Focus.hasAccessibility(this@MainActivity))
-            .put("v", 1).toString()
+            .put("v", 2).toString()
 
         @JavascriptInterface
         fun openUsage() { runOnUiThread { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) } }
@@ -105,6 +105,19 @@ class MainActivity : Activity() {
             val s = HashSet<String>()
             for (k in 0 until a.length()) s.add(a.getString(k))
             Focus.setActive(this@MainActivity, s)
+        }
+
+        /** Reminders at the times the plan chose: [{"at":epochMs,"t":"title","x":"text"}]. */
+        @JavascriptInterface
+        fun remind(json: String) { Reminder.set(this@MainActivity, json) }
+
+        /** Opens the phone's battery settings so the user can let Startline keep working in the background. */
+        @JavascriptInterface
+        fun openBattery() {
+            runOnUiThread {
+                try { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+                catch (_: Exception) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
+            }
         }
 
         @JavascriptInterface

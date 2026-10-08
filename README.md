@@ -127,3 +127,11 @@ public/          the app (index.html, app.js, style.css)
 ## Plan assistant and your day
 - **Your day**: Today asks wake time, sleep time, busy hours and your clearest time of day. Tasks are sorted into windows like "Morning · 6:30 AM–7 AM". Works for any goal (study, fitness, work, creative); several plans are fitted into one day by finish date.
 - **Plan assistant (Pro)**: in a race, chat to reword, add, remove or re-time steps. It asks follow-up questions and changes nothing until you tap Apply. Endpoint `POST /api/plan/edit` (60 a day per user).
+
+## Everyday life features
+- **Busy or sick day**, per-goal rest days, urgent one-off tasks that do not disturb the plan.
+- **Pace check** on Today: how far behind, with +15 min/day, move finish date, or re-plan dates.
+- **Busy times per weekday**, used when placing tasks. Reminders at task times (Android app, needs the new APK).
+- **Spaced review**: finishing a study step schedules 10 minute reviews after 1, 3 and 7 days.
+- **Syllabus checklist, weak areas and test scores** per goal; **Your week** in Report; **Share this plan**.
+- **Ages 13 to 17** can use the app once a parent or guardian has agreed; paid plans need a parent.
