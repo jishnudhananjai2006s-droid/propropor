@@ -983,16 +983,44 @@ setInterval(function(){
 var THINK=['Reading your goal','Caramelizing onions','Triangulating your deadline','Untangling your calendar','Sharpening pencils','Weighing the hard weeks','Charting the laps','Pacing the marathon','Balancing the rhythm','Whisking in your answers','Stress-testing the schedule','Polishing the finish line','Consulting the compass','Folding in rest days','Calibrating realism'],thkI=0;
 setInterval(function(){var el=document.getElementById('thk');if(!el)return;thkI=(thkI+1+Math.floor(Math.random()*3))%THINK.length;el.textContent=THINK[thkI]+'...';},2200);
 function pingDone(t,keep){try{if(ui.notify&&document.hidden&&typeof Notification!=='undefined'&&Notification.permission==='granted')new Notification('Startline',{body:t});}catch(e){}if(!keep)ui.notify=false;}
+/* Runner: 26 key poses per stride, played by requestAnimationFrame (60 fps on most phones) with in-between frames, so motion is smooth. */
+var RUN_N=26,RUN_T=900,runOn=false,runKeys=(function(){
+  var k=[],i;for(i=0;i<RUN_N;i++){var th=2*Math.PI*i/RUN_N;k.push(th);}return k;
+})();
+function runPose(ph){ // ph in 0..RUN_N (fractional): interpolate between two key poses
+  var i0=Math.floor(ph)%RUN_N,i1=(i0+1)%RUN_N,f=ph-Math.floor(ph);
+  function key(i,off){var t=runKeys[i]+off;return {a:48*Math.sin(t),fx:8+68*Math.max(0,Math.cos(t-0.5)),r:-44*Math.sin(t),b:-2.6*Math.abs(Math.sin(runKeys[i]))};}
+  function mix(o){var p=key(i0,o),q=key(i1,o);return {a:p.a+(q.a-p.a)*f,fx:p.fx+(q.fx-p.fx)*f,r:p.r+(q.r-p.r)*f,b:p.b+(q.b-p.b)*f};}
+  return {A:mix(Math.PI),B:mix(0),C:mix(Math.PI),D:mix(0)};
+}
+function runDraw(ph){
+  var R=Math.PI/180,P=runPose(ph),bob=P.A.b,hip=[58,33+bob],sh=[62,20.5+bob];
+  function pt(p,L,d){return [p[0]+L*Math.sin(d*R),p[1]+L*Math.cos(d*R)];}
+  function seg(p,q,w1,w2){var dx=q[0]-p[0],dy=q[1]-p[1],l=Math.sqrt(dx*dx+dy*dy)||1,nx=-dy/l,ny=dx/l;
+    return 'M'+(p[0]+nx*w1).toFixed(1)+' '+(p[1]+ny*w1).toFixed(1)+'L'+(p[0]-nx*w1).toFixed(1)+' '+(p[1]-ny*w1).toFixed(1)+'L'+(q[0]-nx*w2*.5).toFixed(1)+' '+(q[1]-ny*w2*.5).toFixed(1)+'L'+q[0].toFixed(1)+' '+q[1].toFixed(1)+'L'+(q[0]+nx*w2*.5).toFixed(1)+' '+(q[1]+ny*w2*.5).toFixed(1)+'Z';}
+  function limb(root,L1,a1,L2,a2,w1,w2,w3){var k=pt(root,L1,a1),e=pt(k,L2,a2);return seg(root,k,w1,w2)+seg(k,e,w2,w3);}
+  function leg(o){return limb(hip,11.5,o.a,11.5,o.a-o.fx,4.6,3.4,2.4);}
+  function arm(o){return limb(sh,8.5,o.r,8,o.r+62,3.6,2.8,2);}
+  var set=function(id,d){var e=document.getElementById(id);if(e)e.setAttribute('d',d);};
+  set('rf1',leg(P.A));set('rf2',arm(P.B));
+  set('rf3','M'+(sh[0]-3.2)+' '+sh[1].toFixed(1)+'L'+(sh[0]+3.2)+' '+sh[1].toFixed(1)+'L'+(hip[0]+.6)+' '+hip[1].toFixed(1)+'Z');
+  var h=document.getElementById('rf4');if(h){h.setAttribute('cy',(11.5+bob).toFixed(1));}
+  var g=document.getElementById('rf5');if(g){g.setAttribute('cy',(8.2+bob).toFixed(1));}
+  set('rf6',leg(P.B));set('rf7',arm(P.A));
+}
+function runTick(now){
+  if(!document.getElementById('rf4')){runOn=false;return;}
+  runDraw(((now%RUN_T)/RUN_T)*RUN_N);
+  requestAnimationFrame(runTick);
+}
+function runStart(){if(runOn||!document.getElementById('rf4'))return;runOn=true;requestAnimationFrame(runTick);}
+function runFrames(){
+  return '<path id="rf1" class="ml"/><path id="rf2" class="ml"/><path id="rf3" class="ml"/><circle id="rf4" class="mh" cx="65.5" cy="11.5" r="8.2"/><ellipse id="rf5" class="mgl" cx="62.5" cy="8.2" rx="2.9" ry="1.9"/><path id="rf6" class="ml"/><path id="rf7" class="ml"/>';
+}
 function loadFx(){
   var lanes=[[30,40,340,720,170,'9s'],[96,160,208,480,104,'6.5s']];
   var bg='<div class="loadfx" aria-hidden="true"><svg viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice">'+lanes.map(function(x){return '<rect class="lane" x="'+x[0]+'" y="'+x[1]+'" width="'+x[2]+'" height="'+x[3]+'" rx="'+x[4]+'" pathLength="100"/><rect class="run" style="animation-duration:'+x[5]+'" x="'+x[0]+'" y="'+x[1]+'" width="'+x[2]+'" height="'+x[3]+'" rx="'+x[4]+'" pathLength="100"/>';}).join('')+'</svg></div>';
-  var man='<div class="runwidget" aria-hidden="true"><svg viewBox="0 0 120 60" width="150" height="75">'+
-    '<defs><linearGradient id="gm" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="56"><stop offset="0" stop-color="#2FA862"/><stop offset=".5" stop-color="#0F6B33"/><stop offset="1" stop-color="#053F1D"/></linearGradient>'+
-    '<radialGradient id="gh" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#46C27C"/><stop offset=".5" stop-color="#0F6B33"/><stop offset="1" stop-color="#053F1D"/></radialGradient></defs>'+
-    '<line class="ground" x1="0" y1="56" x2="120" y2="56"/>'+
-    '<g><animateTransform attributeName="transform" type="translate" values="0 0;0 -3;0 0" dur=".35s" calcMode="spline" keyTimes="0;.5;1" keySplines=".37 0 .63 1;.37 0 .63 1" repeatCount="indefinite"/>'+
-    '<path class="ml" d="M59.5 19L64.5 19L59 34Z"/><circle class="mh" cx="64" cy="11" r="8.5"/><ellipse class="mgl" cx="61" cy="7.6" rx="3" ry="2"/>'+
-    '<g><path class="ml" d="M57.4 21 L64.6 21 L61 36 Z"/><path class="mg" d="M59.4 23 L60.6 32"/><animateTransform attributeName="transform" type="rotate" values="-65 61 21;65 61 21;-65 61 21" dur=".7s" calcMode="spline" keyTimes="0;.5;1" keySplines=".37 0 .63 1;.37 0 .63 1" repeatCount="indefinite"/></g><g><path class="ml" d="M57.4 21 L64.6 21 L61 36 Z"/><path class="mg" d="M59.4 23 L60.6 32"/><animateTransform attributeName="transform" type="rotate" values="65 61 21;-65 61 21;65 61 21" dur=".7s" calcMode="spline" keyTimes="0;.5;1" keySplines=".37 0 .63 1;.37 0 .63 1" repeatCount="indefinite"/></g><g><path class="ml" d="M53.8 33 L62.2 33 L58 54 Z"/><path class="mg" d="M56.1 35 L57.6 50"/><animateTransform attributeName="transform" type="rotate" values="-60 58 33;60 58 33;-60 58 33" dur=".7s" calcMode="spline" keyTimes="0;.5;1" keySplines=".37 0 .63 1;.37 0 .63 1" repeatCount="indefinite"/></g><g><path class="ml" d="M53.8 33 L62.2 33 L58 54 Z"/><path class="mg" d="M56.1 35 L57.6 50"/><animateTransform attributeName="transform" type="rotate" values="60 58 33;-60 58 33;60 58 33" dur=".7s" calcMode="spline" keyTimes="0;.5;1" keySplines=".37 0 .63 1;.37 0 .63 1" repeatCount="indefinite"/></g>'+'</g></svg></div>';
+  var man='<div class="runwidget" aria-hidden="true"><svg viewBox="0 0 120 60" width="150" height="75"><defs><linearGradient id="gm" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="56"><stop offset="0" stop-color="#2FA862"/><stop offset=".5" stop-color="#0F6B33"/><stop offset="1" stop-color="#053F1D"/></linearGradient><radialGradient id="gh" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#46C27C"/><stop offset=".5" stop-color="#0F6B33"/><stop offset="1" stop-color="#053F1D"/></radialGradient></defs><line class="ground" x1="0" y1="56" x2="120" y2="56"/>'+runFrames()+'</svg></div>';
   return bg+man;
 }
 function vRaceForm(){
@@ -1233,7 +1261,7 @@ function render(){
   var scr=$('#screen'),top=ui.reset?0:scr.scrollTop;ui.reset=false;
   var views={today:vToday,focus:vFocus,race:vRace,report:vReport};
   scr.innerHTML=(S.demo?banner():'')+views[ui.tab]();
-  scr.scrollTop=top;renderTabs();
+  scr.scrollTop=top;renderTabs();runStart();
   var gate=!ENT.signedIn;$('#app').classList.toggle('gated',gate);
   var ov=$('#overlay');if(!ov){ov=document.createElement('div');ov.id='overlay';$('#app').appendChild(ov);}
   ov.innerHTML=!ageOK()?vAge():ui.conflict?vConflict():(gate?(ui.booted?vLogin():'<div class="splash"><span class="badge">Startline</span></div>'):(ui.login?vLogin():(ui.paywall?vPaywall():'')));
