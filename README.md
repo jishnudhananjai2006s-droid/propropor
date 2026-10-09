@@ -135,3 +135,10 @@ public/          the app (index.html, app.js, style.css)
 - **Spaced review**: finishing a study step schedules 10 minute reviews after 1, 3 and 7 days.
 - **Syllabus checklist, weak areas and test scores** per goal; **Your week** in Report; **Share this plan**.
 - **Ages 13 to 17** can use the app once a parent or guardian has agreed; paid plans need a parent.
+
+## Interface redesign and sharper plans
+- Today now opens with one "Do this next" card and a single big Start button; the rest of the day is a plain list. Progress is a thin strip instead of a slab.
+- New palette (cool paper, ink, one cobalt colour), Bricolage Grotesque and Instrument Sans, flat tab bar, text filter tabs.
+- Follow-up questions come in four rounds (About you, About your goal, Where you stand now, Making it fit you) from one AI call, so no extra credits.
+- Plans for syllabus goals name the real chapters and units, one per step.
+- Loading screens show quiet running lanes behind the card (still when the phone asks for reduced motion).

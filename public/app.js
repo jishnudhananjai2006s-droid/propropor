@@ -983,24 +983,34 @@ setInterval(function(){
 var THINK=['Reading your goal','Caramelizing onions','Triangulating your deadline','Untangling your calendar','Sharpening pencils','Weighing the hard weeks','Charting the laps','Pacing the marathon','Balancing the rhythm','Whisking in your answers','Stress-testing the schedule','Polishing the finish line','Consulting the compass','Folding in rest days','Calibrating realism'],thkI=0;
 setInterval(function(){var el=document.getElementById('thk');if(!el)return;thkI=(thkI+1+Math.floor(Math.random()*3))%THINK.length;el.textContent=THINK[thkI]+'...';},2200);
 function pingDone(t,keep){try{if(ui.notify&&document.hidden&&typeof Notification!=='undefined'&&Notification.permission==='granted')new Notification('Startline',{body:t});}catch(e){}if(!keep)ui.notify=false;}
+function loadFx(){
+  var l=[[24,24,352,752,170,'8s'],[64,70,272,660,140,'11s'],[104,116,192,568,110,'14s']];
+  return '<div class="loadfx" aria-hidden="true"><svg viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice">'+l.map(function(x,i){return '<rect class="lane" x="'+x[0]+'" y="'+x[1]+'" width="'+x[2]+'" height="'+x[3]+'" rx="'+x[4]+'" pathLength="100"/><rect class="run" style="animation-duration:'+x[5]+';animation-delay:-'+(i*3)+'s" x="'+x[0]+'" y="'+x[1]+'" width="'+x[2]+'" height="'+x[3]+'" rx="'+x[4]+'" pathLength="100"/>';}).join('')+'<circle class="pulse" cx="200" cy="400" r="40"/></svg></div>';
+}
 function vRaceForm(){
   var f=ui.raceForm,h='<button type="button" class="btn ghost small" data-action="raceback" style="align-self:flex-start">Back</button><div class="head"><div class="eyebrow">New goal</div><h1>'+(f.step==='questions'?'A few questions':'Set the finish line')+'</h1></div>';
   if(f.loading){
     var m=f.loading==='questions'?'Reading your goal and preparing questions for you.':'Building your plan. Longer plans can take up to a minute.';
     var nb='';
     if(typeof Notification!=='undefined'&&Notification.permission!=='denied'){nb=Notification.permission==='granted'&&ui.notify?'<p class="note">We will notify you when it is ready. You can switch apps.</p>':'<button type="button" class="btn" data-action="racenotify">Notify me when ready</button> ';}
-    return h+'<section class="card"><p><span class="spin"></span>'+m+'</p><p class="note" aria-live="off" id="thk">'+THINK[0]+'...</p><div class="bar" style="margin-top:14px"><i id="etaFill" style="width:2%"></i></div><p class="note mono" id="eta" style="margin-top:8px">'+etaText(f)+'</p><div style="margin-top:14px">'+nb+'<button type="button" class="btn" data-action="racecancel">Cancel</button></div></section>';
+    return h+loadFx()+'<section class="card plain"><p><span class="spin"></span>'+m+'</p><p class="note" aria-live="off" id="thk">'+THINK[0]+'...</p><div class="bar" style="margin-top:14px"><i id="etaFill" style="width:2%"></i></div><p class="note mono" id="eta" style="margin-top:8px">'+etaText(f)+'</p><div style="margin-top:14px">'+nb+'<button type="button" class="btn" data-action="racecancel">Cancel</button></div></section>';
   }
   if(f.step==='questions'){
-    h+='<p class="sub">Your answers shape the plan. Tap as many options as fit, or type your own. Skip any you like.</p>';
+    var rs=[];f.qs.forEach(function(q){var k=q.r||'';if(rs.indexOf(k)<0)rs.push(k);});
+    var rd=Math.max(0,Math.min(rs.length-1,f.rd||0)),last=rd>=rs.length-1;f.rd=rd;
+    h+='<div class="rounds" aria-label="Round '+(rd+1)+' of '+rs.length+'">'+rs.map(function(k,j){return '<i class="'+(j<rd?'dn':(j===rd?'on':''))+'"></i>';}).join('')+'</div>';
+    h+='<p class="sub"><b>'+(rs.length>1?'Round '+(rd+1)+' of '+rs.length+(rs[rd]?': '+esc(rs[rd]):''):'A few questions')+'.</b> Tap as many options as fit, or type your own. Skip any you like.</p>';
     f.qs.forEach(function(q,i){
+      if((q.r||'')!==rs[rd])return;
       h+='<section class="card"><label class="lbl" for="qa'+i+'" style="margin-top:0">'+esc(q.q)+'</label>';
       if(q.options&&q.options.length)h+='<div class="chips" style="margin-bottom:10px">'+q.options.map(function(o,j){return chip(esc(o),(q.picks||[]).indexOf(o)>=0,'qopt',j,' data-id="'+i+'"');}).join('')+'</div>';
       h+='<input id="qa'+i+'" type="text" maxlength="240" placeholder="Or add your own" value="'+esc(q.a)+'"></section>';
     });
-    if(f.event)h+='<section class="card"><div class="tag">Real date found</div><h2 style="margin-top:6px">'+esc(f.event.name)+'</h2><p class="sub" style="margin:6px 0 10px">'+esc(fmtDateY(f.event.date))+' · '+Math.ceil((parseYmd(f.event.date)-startOfDay(Date.now()))/DAY)+' days from today.'+(f.event.note?' '+esc(f.event.note)+'.':'')+' '+(f.event.source?'Source: '+esc(f.event.source)+'. ':'')+'Always confirm on the official site.</p><div class="chips">'+chip('Plan to this date',f.useEvent,'evon',1)+chip('Use my own timeline',!f.useEvent,'evon',0)+'</div>'+(f.useEvent?'<label class="lbl" for="evDate">Wrong date? Change it</label><input id="evDate" type="date" value="'+esc(f.event.date)+'" style="max-width:190px">':'')+'</section>';
+    if(f.event&&rd===Math.min(1,rs.length-1))h+='<section class="card"><div class="tag">Real date found</div><h2 style="margin-top:6px">'+esc(f.event.name)+'</h2><p class="sub" style="margin:6px 0 10px">'+esc(fmtDateY(f.event.date))+' · '+Math.ceil((parseYmd(f.event.date)-startOfDay(Date.now()))/DAY)+' days from today.'+(f.event.note?' '+esc(f.event.note)+'.':'')+' '+(f.event.source?'Source: '+esc(f.event.source)+'. ':'')+'Always confirm on the official site.</p><div class="chips">'+chip('Plan to this date',f.useEvent,'evon',1)+chip('Use my own timeline',!f.useEvent,'evon',0)+'</div>'+(f.useEvent?'<label class="lbl" for="evDate">Wrong date? Change it</label><input id="evDate" type="date" value="'+esc(f.event.date)+'" style="max-width:190px">':'')+'</section>';
     if(f.err)h+='<p class="err" role="alert">'+esc(f.err)+'</p>';
-    h+='<button type="button" class="btn primary big" data-action="racebuild">Build my plan</button><button type="button" class="btn ghost" data-action="raceskipq">Skip the questions</button>';
+    h+=last?'<button type="button" class="btn primary big" data-action="racebuild">Build my plan</button>':'<button type="button" class="btn primary big" data-action="rdnext">Next</button>';
+    if(rd>0)h+='<button type="button" class="btn" data-action="rdprev">Previous round</button>';
+    h+='<button type="button" class="btn ghost" data-action="raceskipq">'+(last?'Skip the questions':'Skip to building my plan')+'</button>';
     return h;
   }
   var wk=[[4,'4 weeks'],[8,'8 weeks'],[12,'12 weeks'],[26,'6 months'],[52,'1 year'],[78,'18 months'],[104,'2 years']];
@@ -1281,12 +1291,12 @@ function saveDraft(){
   var f=ui.raceForm;if(!f)return;
   if(clip(f.goal,160).length<1&&!(f.qs||[]).some(function(q){return qAns(q);})){S.rdraft=null;save(true);return;}
   var q=f.step==='questions'&&f.qs&&f.qs.length;
-  S.rdraft={goal:clip(f.goal,160),weeks:f.weeks,mins:f.mins,step:q?'questions':'goal',qs:q?f.qs.map(function(x){return {q:x.q,options:x.options||[],picks:(x.picks||[]).slice(0,6),a:clip(x.a,240)};}):[],event:q&&f.event?f.event:null,useEvent:!!f.useEvent};
+  S.rdraft={goal:clip(f.goal,160),weeks:f.weeks,mins:f.mins,step:q?'questions':'goal',qs:q?f.qs.map(function(x){return {q:x.q,r:x.r||'',options:x.options||[],picks:(x.picks||[]).slice(0,6),a:clip(x.a,240)};}):[],rd:f.rd||0,event:q&&f.event?f.event:null,useEvent:!!f.useEvent};
   save(true);
 }
 function restoreDraft(){
   var d=S.rdraft;if(!d||typeof d!=='object')return null;
-  return {goal:clip(d.goal,160),weeks:Number(d.weeks)||8,mins:Number(d.mins)||30,loading:false,err:'',step:d.step==='questions'&&Array.isArray(d.qs)&&d.qs.length?'questions':'goal',qs:Array.isArray(d.qs)?d.qs:[],event:d.event||null,useEvent:!!d.useEvent};
+  return {goal:clip(d.goal,160),weeks:Number(d.weeks)||8,mins:Number(d.mins)||30,loading:false,err:'',step:d.step==='questions'&&Array.isArray(d.qs)&&d.qs.length?'questions':'goal',qs:Array.isArray(d.qs)?d.qs:[],rd:Number(d.rd)||0,event:d.event||null,useEvent:!!d.useEvent};
 }
 function needLogin(){var f=ui.raceForm;if(f)f.loading=false;ui.afterLogin='plan';ui.login=true;render();}
 async function nextStep(){
@@ -1300,7 +1310,7 @@ async function nextStep(){
   try{
     var out=await apiRetry('/api/plan/questions',planBody(f),ctl,f);
     ui.abort=null;if(ui.raceForm!==f)return;
-    f.qs=(out.questions||[]).map(function(q){return {q:clip(q.q,140),options:(q.options||[]).map(function(o){return clip(o,40);}),a:''};});
+    f.qs=(out.questions||[]).map(function(q){return {q:clip(q.q,140),r:clip(q.round,30),options:(q.options||[]).map(function(o){return clip(o,40);}),a:''};});f.rd=0;
     if(f.qs.length<2)throw {code:'bad_shape'};
     etaSave('questions',Date.now()-f.t0);f.event=out.event&&evOk(out.event)?out.event:null;f.useEvent=!!f.event;f.step='questions';f.loading=false;ui.reset=true;saveDraft();render();pingDone('Your questions are ready.',1);
   }catch(e){
@@ -1430,7 +1440,9 @@ function act(a,d){
     case 'rmins':ui.raceForm.mins=Number(d.v);saveDraft();render();break;
     case 'racenext':nextStep();break;
     case 'racebuild':buildRace(false);break;
-    case 'raceskipq':ui.raceForm.qs=[];buildRace(false);break;
+    case 'rdnext':ui.raceForm.rd=(ui.raceForm.rd||0)+1;saveDraft();ui.reset=true;render();break;
+    case 'rdprev':ui.raceForm.rd=Math.max(0,(ui.raceForm.rd||0)-1);saveDraft();ui.reset=true;render();break;
+    case 'raceskipq':buildRace(false);break;
     case 'qopt':(function(){var q=ui.raceForm.qs[Number(d.id)];if(q){var o=q.options[Number(d.v)];q.picks=q.picks||[];var pi=q.picks.indexOf(o);if(pi>=0)q.picks.splice(pi,1);else q.picks.push(o);saveDraft();render();}})();break;
     case 'racecancel':if(ui.abort)ui.abort.abort();break;
     case 'stepToggle':{var f=findStep(d.r,d.s);if(!f)break;if(f.s.done){f.s.done=null;f.s.spent=0;}else{f.s.done=Date.now();f.s.spent=f.s.min;var tk=f.s.taskId?taskById(f.s.taskId):null;if(tk&&!tk.done)tk.done=f.s.done;}save();render();break;}

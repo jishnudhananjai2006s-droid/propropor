@@ -395,3 +395,27 @@ h2{font:700 18px/1.2 var(--f-display);letter-spacing:-.015em}
 .tcard.hero .meta{margin-top:2px;opacity:.8}
 .pill{margin-right:0}
 .tcard.hero{align-items:stretch}
+
+/* question rounds */
+.rounds{display:flex;gap:6px}
+.rounds i{flex:1;height:4px;border-radius:2px;background:var(--track)}
+.rounds i.dn{background:var(--good)}
+.rounds i.on{background:var(--accent)}
+
+/* loading backdrop: quiet running lanes behind the card */
+.loadfx{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.loadfx svg{width:100%;height:100%;display:block}
+.loadfx .lane{fill:none;stroke:var(--line);stroke-width:1.5}
+.loadfx .run{fill:none;stroke:var(--accent);stroke-width:3;stroke-linecap:round;stroke-dasharray:7 93;opacity:.55}
+.loadfx .pulse{fill:var(--accent);opacity:.08;transform-origin:200px 400px}
+.screen>:not(.loadfx){position:relative;z-index:1}
+.card.plain{background:transparent;border-color:transparent}
+@media (prefers-reduced-motion:no-preference){
+  .loadfx .run{animation:lap linear infinite}
+  .loadfx .pulse{animation:breathe 4.5s ease-in-out infinite}
+  @keyframes lap{from{stroke-dashoffset:0}to{stroke-dashoffset:-100}}
+  @keyframes breathe{0%,100%{transform:scale(.8);opacity:.05}50%{transform:scale(2.4);opacity:.11}}
+}
+.tcard.hero{position:relative}
+.tcard.hero .check{display:block;position:absolute;top:16px;right:16px;border-color:rgba(255,255,255,.55);width:30px;height:30px}
+.tcard.hero .check.on{background:#fff;border-color:#fff}
