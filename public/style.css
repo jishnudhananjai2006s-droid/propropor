@@ -402,18 +402,20 @@ h2{font:700 18px/1.2 var(--f-display);letter-spacing:-.015em}
 .rounds i.dn{background:var(--good)}
 .rounds i.on{background:var(--accent)}
 
-/* loading: one clean lap in front of the message */
-.loadcard{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:28px 20px 22px}
+/* loading: two calm lanes behind the card, a runner above the tab bar. Always animated: it is the only sign that work is happening. */
+.loadcard{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:26px 20px 22px;position:relative;z-index:1}
 .loadcard>*{max-width:100%}
 .loadcard .bar{width:100%}
-.lmsg{font:700 18px/1.25 var(--f-display);letter-spacing:-.01em;margin-top:4px}
-.runner{width:240px;max-width:80%}
-.runner svg{display:block;width:100%;height:auto;overflow:visible}
-.runner path{fill:none;stroke-linecap:round;stroke-linejoin:round}
-.runner .rt0{stroke:var(--track);stroke-width:7}
-.runner .rt1{stroke:var(--accent);stroke-width:7;stroke-dasharray:26 74;stroke-dashoffset:26;opacity:.35}
-.runner .rt2{stroke:var(--accent);stroke-width:12;stroke-dasharray:.01 99.99;stroke-dashoffset:0}
-@media (prefers-reduced-motion:no-preference){
-  .runner .rt1,.runner .rt2{animation:lap 2.4s linear infinite}
-  @keyframes lap{from{stroke-dashoffset:var(--o)}to{stroke-dashoffset:calc(var(--o) - 100)}}
-}
+.lmsg{font:700 18px/1.25 var(--f-display);letter-spacing:-.01em}
+.loadfx{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.loadfx svg{width:100%;height:100%;display:block}
+.loadfx .lane{fill:none;stroke:var(--track);stroke-width:2}
+.loadfx .run{fill:none;stroke:var(--accent);stroke-width:5;stroke-linecap:round;stroke-dasharray:9 91;animation:lap linear infinite}
+@keyframes lap{from{stroke-dashoffset:0}to{stroke-dashoffset:-100}}
+.screen>.loadcard,.screen>.err,.screen>.head,.screen>button{position:relative;z-index:1}
+.runwidget{position:absolute;left:0;right:0;bottom:70px;z-index:3;display:flex;justify-content:center;pointer-events:none}
+.runwidget svg{overflow:visible}
+.runwidget .ground{stroke:var(--track);stroke-width:2;stroke-dasharray:6 8;stroke-linecap:round;animation:gl .45s linear infinite}
+@keyframes gl{to{stroke-dashoffset:14}}
+.runwidget .mh{fill:var(--ink)}
+.runwidget .ml{stroke:var(--ink);stroke-width:3.5;stroke-linecap:round}
