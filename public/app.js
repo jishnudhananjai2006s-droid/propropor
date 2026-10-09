@@ -984,8 +984,8 @@ var THINK=['Reading your goal','Caramelizing onions','Triangulating your deadlin
 setInterval(function(){var el=document.getElementById('thk');if(!el)return;thkI=(thkI+1+Math.floor(Math.random()*3))%THINK.length;el.textContent=THINK[thkI]+'...';},2200);
 function pingDone(t,keep){try{if(ui.notify&&document.hidden&&typeof Notification!=='undefined'&&Notification.permission==='granted')new Notification('Startline',{body:t});}catch(e){}if(!keep)ui.notify=false;}
 function loadFx(){
-  var l=[[24,24,352,752,170,'8s'],[64,70,272,660,140,'11s'],[104,116,192,568,110,'14s']];
-  return '<div class="loadfx" aria-hidden="true"><svg viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice">'+l.map(function(x,i){return '<rect class="lane" x="'+x[0]+'" y="'+x[1]+'" width="'+x[2]+'" height="'+x[3]+'" rx="'+x[4]+'" pathLength="100"/><rect class="run" style="animation-duration:'+x[5]+';animation-delay:-'+(i*3)+'s" x="'+x[0]+'" y="'+x[1]+'" width="'+x[2]+'" height="'+x[3]+'" rx="'+x[4]+'" pathLength="100"/>';}).join('')+'<circle class="pulse" cx="200" cy="400" r="40"/></svg></div>';
+  var P='M60 18H140A32 32 0 0 1 140 82H60A32 32 0 0 1 60 18Z';
+  return '<div class="runner" aria-hidden="true"><svg viewBox="0 0 200 100"><path class="rt0" d="'+P+'" pathLength="100"/><path class="rt1" style="--o:26" d="'+P+'" pathLength="100"/><path class="rt2" style="--o:0" d="'+P+'" pathLength="100"/></svg></div>';
 }
 function vRaceForm(){
   var f=ui.raceForm,h='<button type="button" class="btn ghost small" data-action="raceback" style="align-self:flex-start">Back</button><div class="head"><div class="eyebrow">New goal</div><h1>'+(f.step==='questions'?'A few questions':'Set the finish line')+'</h1></div>';
@@ -993,7 +993,7 @@ function vRaceForm(){
     var m=f.loading==='questions'?'Reading your goal and preparing questions for you.':'Building your plan. Longer plans can take up to a minute.';
     var nb='';
     if(typeof Notification!=='undefined'&&Notification.permission!=='denied'){nb=Notification.permission==='granted'&&ui.notify?'<p class="note">We will notify you when it is ready. You can switch apps.</p>':'<button type="button" class="btn" data-action="racenotify">Notify me when ready</button> ';}
-    return h+loadFx()+'<section class="card plain"><p><span class="spin"></span>'+m+'</p><p class="note" aria-live="off" id="thk">'+THINK[0]+'...</p><div class="bar" style="margin-top:14px"><i id="etaFill" style="width:2%"></i></div><p class="note mono" id="eta" style="margin-top:8px">'+etaText(f)+'</p><div style="margin-top:14px">'+nb+'<button type="button" class="btn" data-action="racecancel">Cancel</button></div></section>';
+    return h+'<section class="card loadcard">'+loadFx()+'<p class="lmsg">'+m+'</p><p class="note" aria-live="off" id="thk">'+THINK[0]+'...</p><div class="bar" style="margin-top:14px"><i id="etaFill" style="width:2%"></i></div><p class="note mono" id="eta" style="margin-top:8px">'+etaText(f)+'</p><div style="margin-top:14px">'+nb+'<button type="button" class="btn" data-action="racecancel">Cancel</button></div></section>';
   }
   if(f.step==='questions'){
     var rs=[];f.qs.forEach(function(q){var k=q.r||'';if(rs.indexOf(k)<0)rs.push(k);});
