@@ -423,3 +423,48 @@ h2{font:700 18px/1.2 var(--f-display);letter-spacing:-.015em}
 .runwidget .mgl{fill:#fff;fill-opacity:.7}
 .runwidget svg{filter:drop-shadow(0 2px 2px rgba(5,63,29,.4))}
 
+
+/* ---- softer, calmer: gentle curves, small rounds, quieter lines ---- */
+:root[data-skin="fresh"]{--ink:#1B2433;--line:#E9ECF1;--track:#E0E4EB;--muted:#5F6878}
+h1{font-weight:700;letter-spacing:-.022em}
+h2{font-weight:700}
+.card,:root[data-skin="fresh"] .card{border-radius:24px;border-color:var(--line);padding:22px}
+.btn,:root[data-skin="fresh"] .btn{border-radius:16px;border-color:var(--line)}
+.btn.big{border-radius:18px}
+.btn.small{border-radius:14px}
+.chip{border-radius:999px;padding:0 16px}
+input[type=text],input[type=date],input[type=number],select,textarea,
+:root[data-skin="fresh"] input[type=text],:root[data-skin="fresh"] input[type=date],:root[data-skin="fresh"] select,:root[data-skin="fresh"] textarea{border-radius:16px}
+.banner{border-radius:16px}
+.mnote{border-radius:18px}
+.toast{border-radius:18px}
+.sheet{border-radius:28px 28px 0 0}
+.tourcard{border-radius:24px}
+#spot{border-radius:22px}
+.roundbtn{border-radius:50%}
+.bar,.daybar .bar{border-radius:999px}
+.bar i{border-radius:999px}
+.col .b{border-radius:10px 10px 4px 4px}
+.node.fin,.rt.fin i{border-radius:50%}
+.wk .d{border-radius:18px}
+.badge{border-radius:999px;padding:3px 10px}
+.rounds i{border-radius:999px}
+.dots i.on{border-radius:999px}
+.tcard{border-bottom-color:var(--line)}
+.tcard.hero{border-radius:28px}
+.tcard.hero .acts .btn{border-radius:18px}
+.tcard.hero .check{border-radius:50%}
+/* tabs: a rounded bar with a soft pill behind the active icon */
+.tabs{border-top:0;border-radius:26px 26px 0 0;box-shadow:0 -8px 28px rgba(27,36,51,.06)}
+.tab[aria-current="page"]::before{display:none}
+.tab svg{box-sizing:content-box;padding:4px 20px;border-radius:999px}
+.tab[aria-current="page"] svg{background:var(--accent-soft);color:var(--accent);padding:4px 20px;width:24px;height:24px;box-sizing:content-box;border-radius:999px}
+/* filters: soft pills instead of a hard underline */
+.seg3{border-bottom:0;gap:8px}
+.fpill,:root[data-skin="fresh"] .fpill{border:0;border-radius:999px;padding:0 16px;min-height:40px;margin:0}
+.fpill[aria-pressed="true"],:root[data-skin="fresh"] .fpill[aria-pressed="true"]{background:var(--accent-soft);color:var(--ink);border:0}
+.fpill b{order:0;margin-left:6px}
+/* soft focus ring and gentle press feedback */
+:focus-visible{outline-offset:3px;border-radius:12px}
+.btn:active,.chip:active,.fpill:active{transform:scale(.98)}
+@media (prefers-reduced-motion:no-preference){.btn,.chip,.fpill{transition:transform .12s ease,background-color .2s ease}}
