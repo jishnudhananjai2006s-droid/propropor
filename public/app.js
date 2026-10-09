@@ -995,11 +995,11 @@ function vRaceForm(){
     return h+'<section class="card"><p><span class="spin"></span>'+m+'</p><p class="note" aria-live="off" id="thk">'+THINK[0]+'...</p><div class="bar" style="margin-top:14px"><i id="etaFill" style="width:2%"></i></div><p class="note mono" id="eta" style="margin-top:8px">'+etaText(f)+'</p><div style="margin-top:14px">'+nb+'<button type="button" class="btn" data-action="racecancel">Cancel</button></div></section>';
   }
   if(f.step==='questions'){
-    h+='<p class="sub">Your answers shape the plan. Tap an option or type your own. Skip any you like.</p>';
+    h+='<p class="sub">Your answers shape the plan. Tap as many options as fit, or type your own. Skip any you like.</p>';
     f.qs.forEach(function(q,i){
       h+='<section class="card"><label class="lbl" for="qa'+i+'" style="margin-top:0">'+esc(q.q)+'</label>';
-      if(q.options&&q.options.length)h+='<div class="chips" style="margin-bottom:10px">'+q.options.map(function(o,j){return chip(esc(o),q.a===o,'qopt',j,' data-id="'+i+'"');}).join('')+'</div>';
-      h+='<input id="qa'+i+'" type="text" maxlength="240" placeholder="Or type your own answer" value="'+esc(q.a)+'"></section>';
+      if(q.options&&q.options.length)h+='<div class="chips" style="margin-bottom:10px">'+q.options.map(function(o,j){return chip(esc(o),(q.picks||[]).indexOf(o)>=0,'qopt',j,' data-id="'+i+'"');}).join('')+'</div>';
+      h+='<input id="qa'+i+'" type="text" maxlength="240" placeholder="Or add your own" value="'+esc(q.a)+'"></section>';
     });
     if(f.event)h+='<section class="card"><div class="tag">Real date found</div><h2 style="margin-top:6px">'+esc(f.event.name)+'</h2><p class="sub" style="margin:6px 0 10px">'+esc(fmtDateY(f.event.date))+' · '+Math.ceil((parseYmd(f.event.date)-startOfDay(Date.now()))/DAY)+' days from today.'+(f.event.note?' '+esc(f.event.note)+'.':'')+' '+(f.event.source?'Source: '+esc(f.event.source)+'. ':'')+'Always confirm on the official site.</p><div class="chips">'+chip('Plan to this date',f.useEvent,'evon',1)+chip('Use my own timeline',!f.useEvent,'evon',0)+'</div>'+(f.useEvent?'<label class="lbl" for="evDate">Wrong date? Change it</label><input id="evDate" type="date" value="'+esc(f.event.date)+'" style="max-width:190px">':'')+'</section>';
     if(f.err)h+='<p class="err" role="alert">'+esc(f.err)+'</p>';
@@ -1279,11 +1279,12 @@ function planBody(f,extra){
   return b;
 }
 function evOk(e){return !!(e&&/^\d{4}-\d{2}-\d{2}$/.test(String(e.date))&&parseYmd(e.date)>=addDays(startOfDay(Date.now()),14)&&parseYmd(e.date)<=addDays(startOfDay(Date.now()),730));}
+function qAns(q){var a=(q.picks||[]).slice();var t=clip(q.a,240);if(t)a.push(t);return clip(a.join('; '),380);}
 function saveDraft(){
   var f=ui.raceForm;if(!f)return;
-  if(clip(f.goal,160).length<1&&!(f.qs||[]).some(function(q){return q.a;})){S.rdraft=null;save(true);return;}
+  if(clip(f.goal,160).length<1&&!(f.qs||[]).some(function(q){return qAns(q);})){S.rdraft=null;save(true);return;}
   var q=f.step==='questions'&&f.qs&&f.qs.length;
-  S.rdraft={goal:clip(f.goal,160),weeks:f.weeks,mins:f.mins,step:q?'questions':'goal',qs:q?f.qs.map(function(x){return {q:x.q,options:x.options||[],a:clip(x.a,240)};}):[],event:q&&f.event?f.event:null,useEvent:!!f.useEvent};
+  S.rdraft={goal:clip(f.goal,160),weeks:f.weeks,mins:f.mins,step:q?'questions':'goal',qs:q?f.qs.map(function(x){return {q:x.q,options:x.options||[],picks:(x.picks||[]).slice(0,6),a:clip(x.a,240)};}):[],event:q&&f.event?f.event:null,useEvent:!!f.useEvent};
   save(true);
 }
 function restoreDraft(){
@@ -1319,7 +1320,7 @@ async function buildRace(){
   {
     f.loading='plan';f.t0=Date.now();f.err='';render();
     var ctl=new AbortController();ui.abort=ctl;
-    var ans=(f.qs||[]).filter(function(x){return x.a&&x.a.trim();}).map(function(x){return {q:x.q,a:clip(x.a,240)};});
+    var ans=(f.qs||[]).filter(function(x){return qAns(x);}).map(function(x){return {q:x.q,a:qAns(x)};});
     try{
       var out=await apiRetry('/api/plan',planBody(f,{answers:ans}),ctl,f);
       plan=normalizeLaps(out,cap);
@@ -1433,7 +1434,7 @@ function act(a,d){
     case 'racenext':nextStep();break;
     case 'racebuild':buildRace(false);break;
     case 'raceskipq':ui.raceForm.qs=[];buildRace(false);break;
-    case 'qopt':(function(){var q=ui.raceForm.qs[Number(d.id)];if(q){var o=q.options[Number(d.v)];q.a=(q.a===o?'':o);render();}})();break;
+    case 'qopt':(function(){var q=ui.raceForm.qs[Number(d.id)];if(q){var o=q.options[Number(d.v)];q.picks=q.picks||[];var pi=q.picks.indexOf(o);if(pi>=0)q.picks.splice(pi,1);else q.picks.push(o);saveDraft();render();}})();break;
     case 'racecancel':if(ui.abort)ui.abort.abort();break;
     case 'stepToggle':{var f=findStep(d.r,d.s);if(!f)break;if(f.s.done){f.s.done=null;f.s.spent=0;}else{f.s.done=Date.now();f.s.spent=f.s.min;var tk=f.s.taskId?taskById(f.s.taskId):null;if(tk&&!tk.done)tk.done=f.s.done;}save();render();break;}
     case 'racedel':ui.confirmDel=true;render();break;

@@ -591,7 +591,7 @@ app.post('/api/plan', needUser, async (req, res) => {
   const finish = event ? event.date : new Date(Date.parse(today + 'T00:00:00Z') + weeks * 7 * 864e5).toISOString().slice(0, 10);
   if (goal.length < 3) return res.status(400).json({ error: 'bad_goal', message: 'Write your goal first.' });
   if (!aiGate(req, res)) return;
-  const answers = (Array.isArray(b.answers) ? b.answers : []).slice(0, 6).map((x) => ({ q: clip(x && x.q, 140), a: clip(x && x.a, 240) })).filter((x) => x.q && x.a);
+  const answers = (Array.isArray(b.answers) ? b.answers : []).slice(0, 6).map((x) => ({ q: clip(x && x.q, 140), a: clip(x && x.a, 400) })).filter((x) => x.q && x.a);
   const cap = Math.max(mins, 10);
   const lapsRange = weeks <= 8 ? '4 to 5' : weeks <= 16 ? '5 to 6' : weeks <= 30 ? '6 to 8' : weeks <= 60 ? '8 to 10' : '10 to 12';
   const targetMin = Math.round(weeks * 7 * mins * 0.8), totalHours = Math.round(targetMin / 60);
