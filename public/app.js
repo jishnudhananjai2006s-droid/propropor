@@ -758,11 +758,8 @@ function banner(){
 }
 function greeting(){var h=new Date().getHours();return h<12?'Good morning':(h<17?'Good afternoon':'Good evening');}
 function ringCard(wins,open,sess,mins){
-  var tot=wins.length+open.length,pct=tot?Math.round(wins.length/tot*100):0,C=276.46,o=stats();
-  return '<section class="card hero2"><div class="eyebrow" style="color:inherit;opacity:.75">Today’s progress</div><div class="herorow">'+
-    '<div class="ring" role="img" aria-label="'+pct+' percent of today\'s tasks done"><svg viewBox="0 0 100 100" width="104" height="104"><circle cx="50" cy="50" r="44" fill="none" stroke="currentColor" stroke-opacity=".2" stroke-width="9"/><circle cx="50" cy="50" r="44" fill="none" stroke="var(--ring)" stroke-width="9" stroke-linecap="round" stroke-dasharray="'+(C*pct/100).toFixed(1)+' '+C+'" transform="rotate(-90 50 50)"/></svg><b>'+pct+'%</b></div>'+
-    '<ul class="hstats"><li><span>Total tasks</span><b>'+tot+'</b></li><li><span>Completed</span><b>'+wins.length+'</b></li><li><span>Pending</span><b>'+open.length+'</b></li></ul></div>'+
-    '<div class="herofoot"><span>'+mins+' min focus today · '+o.streak+'-day streak</span><button type="button" class="linkbtn" data-action="sharecard">Share</button></div></section>';
+  var tot=wins.length+open.length,pct=tot?Math.round(wins.length/tot*100):0,o=stats();
+  return '<section class="daybar" aria-label="Today"><div class="dtop"><span><b>'+wins.length+' of '+tot+' done</b>'+(mins?' · '+mins+' min focused':'')+(o.streak?' · '+o.streak+'-day streak':'')+'</span><button type="button" class="linkbtn" data-action="sharecard">Share</button></div><div class="bar" role="img" aria-label="'+pct+' percent of today\'s tasks done"><i style="width:'+pct+'%"></i></div></section>';
 }
 function weekStrip(){
   var now=Date.now(),sod=startOfDay(now),dow=(new Date(sod).getDay()+6)%7,mon=addDays(sod,-dow),done={},L='MTWTFSS',h='<div class="wk" role="list" aria-label="This week">',i;
@@ -841,9 +838,9 @@ function planToday(){
   });
   return h+'</ul>'+dayModeBlock()+'</section>';
 }
-function taskCard(t){
+function taskCard(t,hero){
   var meta=(t.min?'<span class="pill">'+t.min+' min</span>':'')+(function(){if(!t.duty||!t.sid)return '';var f=findStep(t.rid,t.sid);return f&&f.s.spent>0?'<span class="pill">'+Math.round(f.s.spent/f.s.min*100)+'% of this step done</span>':'';})()+(t.part?'<span class="pill">'+esc(t.part)+'</span>':'')+(t.rid&&S.races.length>1?(function(){var rr=S.races.find(function(x){return x.id===t.rid;});return rr?'<span class="pill">'+esc(clip(rr.name,22))+'</span>':'';})():'')+(t.lap?'<span class="pill">'+esc(t.lap)+'</span>':'')+(ui.pd&&ui.pd[t.id]?'<span class="pill on">'+esc(ui.pd[t.id].label)+'</span>':'')+(t.when?'<span class="pill">'+esc(t.when)+'</span>':'')+(t.started?'<span class="pill on">Started</span>':'');
-  return '<li class="card tcard"><button type="button" class="check" data-action="toggle" data-id="'+t.id+'" aria-label="Mark done: '+esc(t.title)+'"></button>'+
+  return '<li class="tcard'+(hero?' hero':'')+'">'+(hero?'<div class="hk">Do this next</div>':'')+'<button type="button" class="check" data-action="toggle" data-id="'+t.id+'" aria-label="Mark done: '+esc(t.title)+'"></button>'+
     '<div class="body"><div class="t">'+esc(t.title)+'</div><div class="s">First step: '+esc(t.step)+'</div>'+(meta?'<div class="meta">'+meta+'</div>':'')+'</div>'+
     '<div class="acts">'+(t.min>2?'<button type="button" class="btn small primary"'+(ui.tourTaskId===t.id?' data-tour="start"':'')+' data-action="startt" data-id="'+t.id+'">Start '+taskLen(t)+' min</button><button type="button" class="btn small" data-action="start2" data-id="'+t.id+'">Just 2 min</button><button type="button" class="btn small" data-action="tset" data-id="'+t.id+'">Set time</button>':'<button type="button" class="btn small primary"'+(ui.tourTaskId===t.id?' data-tour="start"':'')+' data-action="start2" data-id="'+t.id+'">Start 2 min</button>')+
     (t.duty?'':'<button type="button" class="btn small ghost" data-action="remove" data-id="'+t.id+'">Remove</button>')+'</div></li>';
@@ -878,11 +875,11 @@ function vToday(){
   h+=behindAlert();
   h+=ringCard(wins,open,sess,mins);
   if(ui.addOpen||(!hasActivePlan()&&!S.tasks.length))h+=addForm(ph);
-  h+='<div class="seg3" role="tablist" aria-label="Task filter">'+[['todo','To do',todo.length],['prog','In progress',prog.length],['done','Done',wins.length]].map(function(x){return '<button type="button" role="tab" class="fpill" aria-pressed="'+(f===x[0]?'true':'false')+'" data-action="tf" data-v="'+x[0]+'"><b>'+x[2]+'</b> '+x[1]+'</button>';}).join('')+'</div>';
+  h+='<div class="seg3" role="tablist" aria-label="Task filter">'+[['todo','To do',todo.length],['prog','In progress',prog.length],['done','Done',wins.length]].map(function(x){return '<button type="button" role="tab" class="fpill" aria-pressed="'+(f===x[0]?'true':'false')+'" data-action="tf" data-v="'+x[0]+'">'+x[1]+(x[2]?'<b>'+x[2]+'</b>':'')+'</button>';}).join('')+'</div>';
   var list=f==='todo'?todo:(f==='prog'?prog:[]);
   if(f==='done'){
-    h+=wins.length?'<ul class="tlist">'+wins.map(function(t){return '<li class="card tcard dn"><button type="button" class="check on" data-action="toggle" data-id="'+t.id+'" aria-label="Undo: '+esc(t.title)+'"></button><div class="body"><div class="t">'+esc(t.title)+'</div><div class="s mono">'+new Date(t.done).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})+'</div></div></li>';}).join('')+'</ul>':'<p class="empty">Wins show up here. Even a 2-minute start counts.</p>';
-  }else if(list.length)h+='<ul class="tlist">'+list.map(taskCard).join('')+'</ul>';
+    h+=wins.length?'<ul class="tlist">'+wins.map(function(t){return '<li class="tcard dn"><button type="button" class="check on" data-action="toggle" data-id="'+t.id+'" aria-label="Undo: '+esc(t.title)+'"></button><div class="body"><div class="t">'+esc(t.title)+'</div><div class="s mono">'+new Date(t.done).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})+'</div></div></li>';}).join('')+'</ul>':'<p class="empty">Wins show up here. Even a 2-minute start counts.</p>';
+  }else if(list.length)h+='<ul class="tlist">'+list.map(function(t,i){return taskCard(t,f==='todo'&&i===0&&!t.demo);}).join('')+'</ul>';
   else h+='<p class="empty">'+(f==='todo'?(hasActivePlan()?'Today\u2019s duty is done. Rest, and tomorrow\u2019s work will appear here by itself.':tn('Nothing waiting. Tap + to add the one thing you keep putting off.','Nothing waits here. Tap + and name the one thing you have been avoiding.')):'Nothing in progress. Start a task and it shows up here.')+'</p>';
   h+=planToday()+weekStrip();
   return h;
