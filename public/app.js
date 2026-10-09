@@ -986,14 +986,13 @@ function pingDone(t,keep){try{if(ui.notify&&document.hidden&&typeof Notification
 function loadFx(){
   var lanes=[[30,40,340,720,170,'9s'],[96,160,208,480,104,'6.5s']];
   var bg='<div class="loadfx" aria-hidden="true"><svg viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice">'+lanes.map(function(x){return '<rect class="lane" x="'+x[0]+'" y="'+x[1]+'" width="'+x[2]+'" height="'+x[3]+'" rx="'+x[4]+'" pathLength="100"/><rect class="run" style="animation-duration:'+x[5]+'" x="'+x[0]+'" y="'+x[1]+'" width="'+x[2]+'" height="'+x[3]+'" rx="'+x[4]+'" pathLength="100"/>';}).join('')+'</svg></div>';
-  var man='<div class="runwidget" aria-hidden="true"><svg viewBox="0 0 120 56" width="132" height="62">'+
-    '<line class="ground" x1="0" y1="52" x2="120" y2="52" pathLength="120"/>'+
-    '<g><animateTransform attributeName="transform" type="translate" values="0 0;0 -2.5;0 0" dur=".5s" repeatCount="indefinite"/>'+
-    '<circle class="mh" cx="64" cy="10" r="6"/><line class="ml" x1="62" y1="17" x2="58" y2="33"/>'+
-    '<g><line class="ml" x1="61" y1="21" x2="61" y2="33"/><animateTransform attributeName="transform" type="rotate" values="-50 61 21;50 61 21;-50 61 21" dur=".5s" repeatCount="indefinite"/></g>'+
-    '<g><line class="ml" x1="61" y1="21" x2="61" y2="33"/><animateTransform attributeName="transform" type="rotate" values="50 61 21;-50 61 21;50 61 21" dur=".5s" repeatCount="indefinite"/></g>'+
-    '<g><line class="ml" x1="58" y1="33" x2="58" y2="50"/><animateTransform attributeName="transform" type="rotate" values="-45 58 33;45 58 33;-45 58 33" dur=".5s" repeatCount="indefinite"/></g>'+
-    '<g><line class="ml" x1="58" y1="33" x2="58" y2="50"/><animateTransform attributeName="transform" type="rotate" values="45 58 33;-45 58 33;45 58 33" dur=".5s" repeatCount="indefinite"/></g></g></svg></div>';
+  var man='<div class="runwidget" aria-hidden="true"><svg viewBox="0 0 120 60" width="150" height="75">'+
+    '<defs><linearGradient id="gm" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="56"><stop offset="0" stop-color="#5BEA97"/><stop offset=".5" stop-color="#16A34A"/><stop offset="1" stop-color="#0B6B34"/></linearGradient>'+
+    '<radialGradient id="gh" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#8CF5B8"/><stop offset=".55" stop-color="#16A34A"/><stop offset="1" stop-color="#0B6B34"/></radialGradient></defs>'+
+    '<line class="ground" x1="0" y1="56" x2="120" y2="56"/>'+
+    '<g><animateTransform attributeName="transform" type="translate" values="0 0;0 -3;0 0" dur=".5s" repeatCount="indefinite"/>'+
+    '<line class="ml" x1="62" y1="19" x2="58" y2="34"/><line class="mg" x1="60.6" y1="20" x2="56.6" y2="33"/><circle class="mh" cx="64" cy="11" r="8.5"/><ellipse class="mgl" cx="61" cy="7.6" rx="3" ry="2"/>'+
+    '<g><line class="ml" x1="61" y1="21" x2="61" y2="34"/><line class="mg" x1="59.6" y1="22" x2="59.6" y2="33"/><animateTransform attributeName="transform" type="rotate" values="-50 61 21;50 61 21;-50 61 21" dur=".5s" repeatCount="indefinite"/></g><g><line class="ml" x1="61" y1="21" x2="61" y2="34"/><line class="mg" x1="59.6" y1="22" x2="59.6" y2="33"/><animateTransform attributeName="transform" type="rotate" values="50 61 21;-50 61 21;50 61 21" dur=".5s" repeatCount="indefinite"/></g><g><line class="ml" x1="58" y1="33" x2="58" y2="51"/><line class="mg" x1="56.6" y1="34" x2="56.6" y2="50"/><animateTransform attributeName="transform" type="rotate" values="-45 58 33;45 58 33;-45 58 33" dur=".5s" repeatCount="indefinite"/></g><g><line class="ml" x1="58" y1="33" x2="58" y2="51"/><line class="mg" x1="56.6" y1="34" x2="56.6" y2="50"/><animateTransform attributeName="transform" type="rotate" values="45 58 33;-45 58 33;45 58 33" dur=".5s" repeatCount="indefinite"/></g>'+'</g></svg></div>';
   return bg+man;
 }
 function vRaceForm(){
