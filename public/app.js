@@ -996,14 +996,15 @@ function runPose(ph){ // ph in 0..RUN_N (fractional): interpolate between two ke
 function runDraw(ph){
   var R=Math.PI/180,P=runPose(ph),bob=P.A.b,hip=[58,33+bob],sh=[62,20.5+bob];
   function pt(p,L,d){return [p[0]+L*Math.sin(d*R),p[1]+L*Math.cos(d*R)];}
-  function seg(p,q,w1,w2){var dx=q[0]-p[0],dy=q[1]-p[1],l=Math.sqrt(dx*dx+dy*dy)||1,nx=-dy/l,ny=dx/l;
-    return 'M'+(p[0]+nx*w1).toFixed(1)+' '+(p[1]+ny*w1).toFixed(1)+'L'+(p[0]-nx*w1).toFixed(1)+' '+(p[1]-ny*w1).toFixed(1)+'L'+(q[0]-nx*w2*.5).toFixed(1)+' '+(q[1]-ny*w2*.5).toFixed(1)+'L'+q[0].toFixed(1)+' '+q[1].toFixed(1)+'L'+(q[0]+nx*w2*.5).toFixed(1)+' '+(q[1]+ny*w2*.5).toFixed(1)+'Z';}
-  function limb(root,L1,a1,L2,a2,w1,w2,w3){var k=pt(root,L1,a1),e=pt(k,L2,a2);return seg(root,k,w1,w2)+seg(k,e,w2,w3);}
-  function leg(o){return limb(hip,11.5,o.a,11.5,o.a-o.fx,4.6,3.4,2.4);}
-  function arm(o){return limb(sh,8.5,o.r,8,o.r+62,3.6,2.8,2);}
-  var set=function(id,d){var e=document.getElementById(id);if(e)e.setAttribute('d',d);};
+  function circ(p,r){return '<circle class="ml" cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="'+r+'"/>';}
+  function seg(p,q,w1,w2,tip){var dx=q[0]-p[0],dy=q[1]-p[1],l=Math.sqrt(dx*dx+dy*dy)||1,nx=-dy/l,ny=dx/l,e=tip?w2*.5:w2;
+    return '<path class="ml" d="M'+(p[0]+nx*w1).toFixed(1)+' '+(p[1]+ny*w1).toFixed(1)+'L'+(p[0]-nx*w1).toFixed(1)+' '+(p[1]-ny*w1).toFixed(1)+'L'+(q[0]-nx*e).toFixed(1)+' '+(q[1]-ny*e).toFixed(1)+(tip?'L'+q[0].toFixed(1)+' '+q[1].toFixed(1):'')+'L'+(q[0]+nx*e).toFixed(1)+' '+(q[1]+ny*e).toFixed(1)+'Z"/>';}
+  function limb(root,L1,a1,L2,a2,w1,w2,w3){var k=pt(root,L1,a1),e=pt(k,L2,a2);return circ(root,w1)+seg(root,k,w1,w2,false)+circ(k,w2)+seg(k,e,w2,w3,true);}
+  function leg(o){return limb(hip,11.5,o.a,11.5,o.a-o.fx,3.5,2.7,1.6);}
+  function arm(o){return limb(sh,8.5,o.r,8,o.r+62,2.7,2.2,1.4);}
+  var set=function(id,d){var e=document.getElementById(id);if(e)e.innerHTML=d;};
   set('rf1',leg(P.A));set('rf2',arm(P.B));
-  set('rf3','M'+(sh[0]-3.2)+' '+sh[1].toFixed(1)+'L'+(sh[0]+3.2)+' '+sh[1].toFixed(1)+'L'+(hip[0]+.6)+' '+hip[1].toFixed(1)+'Z');
+  set('rf3',circ([sh[0],sh[1]-1],3.1)+'<path class="ml" d="M'+(sh[0]-3)+' '+(sh[1]-1).toFixed(1)+'L'+(sh[0]+3)+' '+(sh[1]-1).toFixed(1)+'L'+(hip[0]+2.4)+' '+hip[1].toFixed(1)+'L'+(hip[0]-2)+' '+hip[1].toFixed(1)+'Z"/>'+circ(hip,2.7));
   var h=document.getElementById('rf4');if(h){h.setAttribute('cy',(11.5+bob).toFixed(1));}
   var g=document.getElementById('rf5');if(g){g.setAttribute('cy',(8.2+bob).toFixed(1));}
   set('rf6',leg(P.B));set('rf7',arm(P.A));
@@ -1015,7 +1016,7 @@ function runTick(now){
 }
 function runStart(){if(runOn||!document.getElementById('rf4'))return;runOn=true;requestAnimationFrame(runTick);}
 function runFrames(){
-  return '<path id="rf1" class="ml"/><path id="rf2" class="ml"/><path id="rf3" class="ml"/><circle id="rf4" class="mh" cx="65.5" cy="11.5" r="8.2"/><ellipse id="rf5" class="mgl" cx="62.5" cy="8.2" rx="2.9" ry="1.9"/><path id="rf6" class="ml"/><path id="rf7" class="ml"/>';
+  return '<g id="rf1" opacity=".7"></g><g id="rf2" opacity=".7"></g><g id="rf3"></g><circle id="rf4" class="mh" cx="65.5" cy="11.5" r="8.2"/><ellipse id="rf5" class="mgl" cx="62.5" cy="8.2" rx="2.9" ry="1.9"/><g id="rf6"></g><g id="rf7"></g>';
 }
 function loadFx(){
   var lanes=[[30,40,340,720,170,'9s'],[96,160,208,480,104,'6.5s']];
