@@ -9,6 +9,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -22,6 +25,57 @@ import org.json.JSONObject
 class MainActivity : Activity() {
     private lateinit var web: WebView
     private val host = Uri.parse(BuildConfig.APP_URL).host ?: ""
+    private var sr: SpeechRecognizer? = null
+
+    private fun say(kind: String, text: String) {
+        web.evaluateJavascript("window.onVoice&&window.onVoice(" + JSONObject.quote(kind) + "," + JSONObject.quote(text) + ")", null)
+    }
+
+    /** Speech to text on the phone's own recogniser (offline when the language pack is there). Nothing is recorded or kept. */
+    private fun startListening() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 2); return
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) { say("error", "unavailable"); return }
+        sr?.destroy()
+        sr = SpeechRecognizer.createSpeechRecognizer(this).also { r ->
+            r.setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(p: Bundle?) { say("ready", "") }
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(v: Float) {}
+                override fun onBufferReceived(b: ByteArray?) {}
+                override fun onEndOfSpeech() {}
+                override fun onEvent(t: Int, p: Bundle?) {}
+                override fun onPartialResults(b: Bundle?) {
+                    say("partial", b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: "")
+                }
+                override fun onResults(b: Bundle?) {
+                    say("final", b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: "")
+                }
+                override fun onError(e: Int) {
+                    say("error", when (e) {
+                        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "denied"
+                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "nospeech"
+                        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "network"
+                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "busy"
+                        else -> "other"
+                    })
+                }
+            })
+            r.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+                .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1))
+        }
+    }
+
+    override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, res: IntArray) {
+        super.onRequestPermissionsResult(code, perms, res)
+        if (code == 2) { if (res.isNotEmpty() && res[0] == PackageManager.PERMISSION_GRANTED) startListening() else say("error", "denied") }
+    }
+
+    override fun onDestroy() { sr?.destroy(); super.onDestroy() }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,6 +131,15 @@ class MainActivity : Activity() {
             .put("overlay", Focus.hasOverlay(this@MainActivity))
             .put("a11y", Focus.hasAccessibility(this@MainActivity))
             .put("v", 2).toString()
+
+        @JavascriptInterface
+        fun canListen(): Boolean = SpeechRecognizer.isRecognitionAvailable(this@MainActivity)
+
+        @JavascriptInterface
+        fun listen() { runOnUiThread { startListening() } }
+
+        @JavascriptInterface
+        fun stopListen() { runOnUiThread { sr?.stopListening() } }
 
         @JavascriptInterface
         fun openUsage() { runOnUiThread { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) } }

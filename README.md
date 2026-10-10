@@ -142,3 +142,6 @@ public/          the app (index.html, app.js, style.css)
 - Follow-up questions come in four rounds (About you, About your goal, Where you stand now, Making it fit you) from one AI call, so no extra credits.
 - Plans for syllabus goals name the real chapters and units, one per step.
 - Loading screens show quiet running lanes behind the card (still when the phone asks for reduced motion).
+
+## Voice thoughts (parking lot)
+A mic button next to "Park a thought". Android: the phone's own speech recogniser through the app shell (asks for the microphone once; prefers offline). Browser: the built-in speech recognition where available; the button is hidden where it is not. Only the text is kept; no audio is recorded, stored or sent by Startline.

@@ -468,3 +468,15 @@ input[type=text],input[type=date],input[type=number],select,textarea,
 :focus-visible{outline-offset:3px;border-radius:12px}
 .btn:active,.chip:active,.fpill:active{transform:scale(.98)}
 @media (prefers-reduced-motion:no-preference){.btn,.chip,.fpill{transition:transform .12s ease,background-color .2s ease}}
+
+/* voice thoughts */
+.parkrow{gap:8px}
+.parkrow input{flex:1;min-width:0}
+.micbtn{flex:none;width:46px;height:46px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--accent);display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative}
+.micbtn.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.micbtn .pulse{position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--accent);opacity:.5;animation:mic 1.4s ease-out infinite}
+@keyframes mic{from{transform:scale(.9);opacity:.6}to{transform:scale(1.35);opacity:0}}
+.listen{display:flex;align-items:center;gap:14px;padding:6px 2px}
+.ltxt{display:flex;flex-direction:column;min-width:0}
+.ltxt b{font-size:15px}
+.ltxt span{color:var(--muted);font-size:14px;overflow-wrap:anywhere}

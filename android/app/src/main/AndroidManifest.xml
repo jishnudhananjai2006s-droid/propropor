@@ -9,9 +9,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Voice notes in the parking lot: speech is turned into text on the phone's own recogniser. No audio is stored. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- Lets the app list launchable apps so the user can choose which ones to block. No broad package access. -->
     <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />

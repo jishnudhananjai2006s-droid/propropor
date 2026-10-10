@@ -749,6 +749,7 @@ function findStep(rid,sid){
 var I={
   check:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg>',
   timer:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9.5 2.5h5"/></svg>',
+  mic:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
   flag:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>',
   chart:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V11M10 20V5M16 20v-8M22 20H2"/></svg>'
 };
@@ -884,12 +885,54 @@ function vToday(){
   h+=planToday()+weekStrip();
   return h;
 }
+/* Voice thoughts: speech becomes text on the device (Android recogniser or the browser's own). The sound is never stored or sent by Startline; only the text you see is kept. */
+var VO={rec:null,timer:0};
+function voiceCan(){try{return !!((window.Android&&window.Android.listen&&(!window.Android.canListen||window.Android.canListen()))||window.SpeechRecognition||window.webkitSpeechRecognition);}catch(e){return false;}}
+function voiceMsg(c){return {denied:'Allow the microphone for Startline in your phone settings, then try again.',nospeech:'Did not catch that. Tap the mic and try again.',network:'Voice needs internet on this phone right now. You can type instead.',busy:'The microphone is busy. Try again in a moment.',unavailable:'Voice typing is not available on this phone. You can type instead.'}[c]||'Voice did not work. You can type instead.';}
+function voiceEnd(err,text){
+  clearTimeout(VO.timer);var was=ui.voice;ui.voice=false;ui.vtxt='';VO.rec=null;
+  if(!was){return;}
+  var t=clip(String(text||'').trim(),200);
+  if(t){S.parked.unshift({id:uid(),text:t,ts:Date.now()});save();render();toast('Parked. Back to work.');}
+  else{render();if(err)toast(voiceMsg(err));}
+}
+function voiceStop(){
+  try{if(window.Android&&window.Android.stopListen)window.Android.stopListen();}catch(e){}
+  try{if(VO.rec)VO.rec.stop();}catch(e){}
+  if(ui.voice){var t=ui.vtxt;setTimeout(function(){if(ui.voice)voiceEnd(t?'':'nospeech',t);},900);}
+}
+function voiceStart(){
+  if(ui.voice){voiceStop();return;}
+  ui.voice='on';ui.vtxt='';render();
+  clearTimeout(VO.timer);VO.timer=setTimeout(function(){voiceStop();},30000);
+  if(window.Android&&window.Android.listen){
+    window.onVoice=function(k,t){
+      if(!ui.voice)return;
+      if(k==='partial'||k==='ready'){if(t){ui.vtxt=t;var el=$('#vlive');if(el)el.textContent=t;}}
+      else if(k==='final')voiceEnd('nospeech',t);
+      else if(k==='error')voiceEnd(t,ui.vtxt&&t==='nospeech'?ui.vtxt:'');
+    };
+    try{window.Android.listen();}catch(e){voiceEnd('other','');}
+    return;
+  }
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  try{
+    var r=new SR();VO.rec=r;r.lang=navigator.language||'en-IN';r.interimResults=true;r.continuous=false;r.maxAlternatives=1;
+    var fin='';
+    r.onresult=function(e){var s='',i;for(i=0;i<e.results.length;i++){s+=e.results[i][0].transcript;if(e.results[i].isFinal)fin=s;}ui.vtxt=s;var el=$('#vlive');if(el)el.textContent=s;};
+    r.onerror=function(e){var c=e&&e.error;voiceEnd(c==='not-allowed'||c==='service-not-allowed'?'denied':(c==='no-speech'?'nospeech':(c==='network'?'network':'other')),'');};
+    r.onend=function(){if(ui.voice)voiceEnd(ui.vtxt?'':'nospeech',fin||ui.vtxt);};
+    r.start();
+  }catch(e){voiceEnd('other','');}
+}
 function parkCard(){
-  return '<section class="card"><h2>Parking lot</h2><p class="sub" style="margin:4px 0 12px;font-size:13px">A thought pops up? Park it here and get back to work.</p>'+
-    '<form data-form="park" class="row" autocomplete="off" style="flex-wrap:nowrap"><input id="parkIn" type="text" maxlength="120" placeholder="Park a thought" aria-label="Park a thought"><button class="btn" type="submit">Park it</button></form>'+
+  var vc=voiceCan(),on=!!ui.voice;
+  return '<section class="card"><h2>Parking lot</h2><p class="sub" style="margin:4px 0 12px;font-size:13px">A thought pops up? Say it or type it, park it here and get back to work.</p>'+
+    (on?'<div class="listen" role="status" aria-live="polite"><button type="button" class="micbtn on" data-action="voice" aria-label="Stop and park"><span class="pulse"></span>'+I.mic+'</button><div class="ltxt"><b>Listening</b><span id="vlive">'+esc(ui.vtxt||'Speak now. Tap the mic when you are done.')+'</span></div></div>':
+    '<form data-form="park" class="row parkrow" autocomplete="off" style="flex-wrap:nowrap"><input id="parkIn" type="text" maxlength="200" placeholder="Park a thought" aria-label="Park a thought">'+(vc?'<button type="button" class="micbtn" data-action="voice" aria-label="Speak a thought">'+I.mic+'</button>':'')+'<button class="btn" type="submit">Park it</button></form>')+
     (S.parked.length?'<ul class="list" style="margin-top:12px">'+S.parked.map(function(p){
       return '<li class="item" style="grid-template-columns:1fr auto;align-items:center;padding:10px 0"><div class="body t" style="font-weight:400">'+esc(p.text)+'</div><button type="button" class="btn small ghost" data-action="unpark" data-id="'+p.id+'" aria-label="Remove thought">Clear</button></li>';
-    }).join('')+'</ul>':'')+'</section>';
+    }).join('')+'</ul>':'')+(vc?'<p class="note" style="margin-top:10px">Voice turns your speech into text. No recording is kept. Your phone\u2019s speech service may use the internet to do it.</p>':'')+'</section>';
 }
 function vFocus(){
   var T=S.timer,h='<div class="head"><div class="eyebrow">Sprint</div><h1>Focus</h1></div>';
@@ -1392,7 +1435,7 @@ async function buildRace(){
 function act(a,d){
   var T=S.timer;
   switch(a){
-    case 'tab':if(d.v==='today')ensureDuty();ui.fx=true;ui.crewOpen=false;ui.tab=d.v;ui.reset=true;ui.confirmErase=false;ui.confirmDel=false;render();if(d.v==='race')buddyPing(false,true);break;
+    case 'tab':if(ui.voice)voiceStop();if(d.v==='today')ensureDuty();ui.fx=true;ui.crewOpen=false;ui.tab=d.v;ui.reset=true;ui.confirmErase=false;ui.confirmDel=false;render();if(d.v==='race')buddyPing(false,true);break;
     case 'stage':if(ui.pf)readPf();S.stage=d.v;save();render();break;
     case 'pfpeak':readPf();ui.pf.peak=d.v;render();break;
     case 'pfday':{readPf();var pp=d.v.split(':'),bb=ui.pf.busy[Number(pp[0])];if(bb){bb.days=bb.days||[0,1,2,3,4,5,6];var di2=bb.days.indexOf(Number(pp[1]));if(di2>=0)bb.days.splice(di2,1);else bb.days.push(Number(pp[1]));}render();break;}
@@ -1462,6 +1505,7 @@ function act(a,d){
     case 'finish':if(T&&T.taskId){completeTask(T.taskId);}S.timer=null;save();render();toast(winMsg());break;
     case 'notyet':case 'dismiss':S.timer=null;save();render();break;
     case 'momentum':if(T&&T.taskId)startSprint(T.taskId,defLen());break;
+    case 'voice':voiceStart();break;
     case 'unpark':S.parked=S.parked.filter(function(x){return x.id!==d.id;});save();render();break;
     case 'racenew':if(!ENT.pro&&freeRaceWait()>0){ui.paywall='races';render();break;}ui.raceOpen=null;ui.raceForm=restoreDraft()||{goal:'',weeks:8,mins:30,loading:false,err:'',step:'goal',qs:[]};ui.reset=true;render();var g=$('#rGoal');if(g)g.focus();break;
     case 'racenotify':try{Notification.requestPermission().then(function(p){ui.notify=(p==='granted');if(ui.raceForm&&ui.raceForm.loading)render();});}catch(e){}break;
@@ -1573,7 +1617,7 @@ document.addEventListener('submit',function(e){
   }else if(f.getAttribute('data-form')==='chat'){
     chatSend(($('#chIn')||{}).value);
   }else{
-    var txt=clip($('#parkIn').value,120);if(!txt)return;
+    var txt=clip($('#parkIn').value,200);if(!txt)return;
     S.parked.unshift({id:uid(),text:txt,ts:Date.now()});save();render();var p=$('#parkIn');if(p)p.focus();
   }
 });
